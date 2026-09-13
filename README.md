@@ -15,7 +15,9 @@ Task 5 RAGFlow adapter/datasets   : implemented; live RAGFlow gate pending
 Task 6 document publication       : implemented; human-governed metadata/lifecycle gate passed
 Task 7 identifier registry        : implemented; exact B-tree path + pg_trgm suggestions
 Task 8 PostgreSQL worker           : implemented; live PostgreSQL gate on dev server
-Task 9 project authorization       : implemented; membership-derived least-privilege scope
+Task 9 authorization primitives   : implemented; membership-derived least-privilege scope
+WS1 FastAPI auth/runtime wiring     : implemented; offline gate PASS
+WS1 live PostgreSQL API gate       : PENDING (requires RUN_POSTGRES_INTEGRATION=1)
 Task 10 minimal QA graph           : implemented; LangGraph runtime gate requires synced deps
 Task 11 authority/citation guard    : implemented; live PostgreSQL evidence gate on dev server
 Task 12 sandbox issue candidates    : implemented; project-scoped read-only candidate retrieval
@@ -103,6 +105,8 @@ Verified JWT sub
 ```
 
 Cross-project evidence and unverifiable provider chunks are dropped before they can enter later Agent stages.
+
+WS1 adds the production FastAPI runtime/authentication envelope for document write operations: Bearer JWT establishes only `user_id`, every protected request reloads current `ProjectMembership`, and document permissions are derived server-side. The WS1 offline gate passes in the implementation environment; the real PostgreSQL API revocation gate remains PENDING until explicitly run with `RUN_POSTGRES_INTEGRATION=1`.
 
 ## Task 10 — Minimal Project QA Graph
 

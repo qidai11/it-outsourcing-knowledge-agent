@@ -11,6 +11,7 @@ from project_agent.application.ports.knowledge import (
     DeleteKnowledgeDocumentRequest,
     KnowledgeAdminPort,
 )
+from project_agent.application.ports.transaction import TransactionCommitPort
 from project_agent.application.use_cases.review_document import DocumentPermissionDenied
 from project_agent.application.use_cases.upload_document import DocumentActor
 from project_agent.domain.enums import DocumentLifecycleStatus
@@ -21,9 +22,12 @@ class DeleteDocumentUseCase:
         self,
         repository: DocumentWorkflowRepository,
         knowledge: KnowledgeAdminPort,
+        *,
+        commit_barrier: TransactionCommitPort | None = None,
     ) -> None:
         self._repository = repository
         self._knowledge = knowledge
+        self._commit_barrier = commit_barrier
 
     async def execute(self, version_id: UUID, actor: DocumentActor) -> DocumentVersionRecord:
         if "archive_document" not in actor.permissions:
@@ -45,6 +49,9 @@ class DeleteDocumentUseCase:
                 user_id=actor.user_id,
             )
         )
+
+        if self._commit_barrier is not None:
+            await self._commit_barrier.commit()
 
         knowledge_space_id = await self._repository.knowledge_space_id(current.project_id)
         await self._knowledge.delete_document(

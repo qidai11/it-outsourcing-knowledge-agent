@@ -360,3 +360,103 @@ async def test_pending_publication_can_finalize_without_reingesting() -> None:
 
     assert published.lifecycle_status is DocumentLifecycleStatus.PUBLISHED
     assert len(knowledge.ingested_requests) == 1
+
+
+class CommitSpy:
+    def __init__(self) -> None:
+        self.count = 0
+
+    async def commit(self) -> None:
+        self.count += 1
+
+
+@pytest.mark.asyncio
+async def test_delete_commit_barrier_precedes_provider_cleanup_failure() -> None:
+    repository = InMemoryDocumentWorkflowRepository()
+    commit_spy = CommitSpy()
+    project_id = uuid4()
+    repository.bind_knowledge_space(project_id, "ks-alpha")
+    version = repository.seed_version(
+        company_id=uuid4(),
+        project_id=project_id,
+        document_category="issue_record",
+        title="Legacy issue",
+        version_label="legacy",
+        authority_level="issue_record",
+        lifecycle_status=DocumentLifecycleStatus.PUBLISHED,
+        owner_user_id=uuid4(),
+    )
+
+    class FailingDeleteKnowledge(FakeKnowledgePort):
+        async def delete_document(self, request) -> None:  # type: ignore[no-untyped-def]
+            assert commit_spy.count == 1
+            raise RuntimeError("simulated provider cleanup failure")
+
+    with pytest.raises(RuntimeError, match="simulated provider cleanup failure"):
+        await DeleteDocumentUseCase(
+            repository,
+            FailingDeleteKnowledge(),
+            commit_barrier=commit_spy,
+        ).execute(
+            version.version_id,
+            actor(uuid4(), permissions={"archive_document"}),
+        )
+
+    assert commit_spy.count == 1
+    assert repository.get_now(version.version_id).lifecycle_status is (
+        DocumentLifecycleStatus.DELETE_PENDING
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_failure_commits_submission_and_failure_audits() -> None:
+    repository = InMemoryDocumentWorkflowRepository()
+    object_store = InMemoryObjectStore()
+    commit_spy = CommitSpy()
+    project_id = uuid4()
+    owner_id = uuid4()
+    repository.bind_knowledge_space(project_id, "ks-alpha")
+
+    draft = await UploadDocumentUseCase(repository, object_store).execute(
+        UploadDocumentCommand(
+            company_id=uuid4(),
+            project_id=project_id,
+            document_category="approved_design",
+            title="Design",
+            version_label="v1.0",
+            authority_level="approved_design",
+            filename="design.md",
+            data=b"design",
+            mime_type="text/markdown",
+            owner_user_id=owner_id,
+            actor=actor(uuid4()),
+        )
+    )
+    await SubmitDocumentReviewUseCase(repository).execute(draft.version_id, actor(draft.created_by))
+    await ApproveDocumentUseCase(repository).execute(draft.version_id, actor(owner_id))
+
+    class FailedStatusKnowledge(FakeKnowledgePort):
+        async def get_ingestion_status(self, ingestion_job_id: str):  # type: ignore[no-untyped-def]
+            assert commit_spy.count == 1
+            status = await super().get_ingestion_status(ingestion_job_id)
+            return type(status)(
+                ingestion_job_id=ingestion_job_id,
+                state=IngestionState.FAILED,
+                error_code="PROVIDER_FAILED",
+            )
+
+    with pytest.raises(DocumentPublishFailed, match="PROVIDER_FAILED"):
+        await PublishDocumentUseCase(
+            repository,
+            FailedStatusKnowledge(),
+            commit_barrier=commit_spy,
+        ).execute(
+            draft.version_id,
+            actor(uuid4(), permissions={"publish_document"}),
+        )
+
+    assert commit_spy.count == 2
+    assert [audit.action for audit in repository.audits[-2:]] == [
+        "document_publication_submitted",
+        "document_publication_failed",
+    ]
