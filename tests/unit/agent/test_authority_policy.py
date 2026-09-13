@@ -12,7 +12,17 @@ from project_agent.domain.enums import AuthorityLevel, DocumentCategory, Documen
 from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
 
 
-def _metadata(*, version_id, project_id, authority, version_no=1, lifecycle=DocumentLifecycleStatus.PUBLISHED, is_current=True, effective_from=None, effective_to=None):
+def _metadata(
+    *,
+    version_id,
+    project_id,
+    authority,
+    version_no=1,
+    lifecycle=DocumentLifecycleStatus.PUBLISHED,
+    is_current=True,
+    effective_from=None,
+    effective_to=None,
+):
     return DocumentEvidenceMetadata(
         document_version_id=version_id,
         document_id=uuid4(),
@@ -76,8 +86,18 @@ async def test_higher_authority_beats_higher_retrieval_score() -> None:
         project_id=project_id,
         project_code="PRJ-RETAIL-ALPHA",
         chunks=[
-            _chunk(project_code="PRJ-RETAIL-ALPHA", version_id=issue_version, content="issue evidence", score=0.99),
-            _chunk(project_code="PRJ-RETAIL-ALPHA", version_id=requirement_version, content="requirement evidence", score=0.71),
+            _chunk(
+                project_code="PRJ-RETAIL-ALPHA",
+                version_id=issue_version,
+                content="issue evidence",
+                score=0.99,
+            ),
+            _chunk(
+                project_code="PRJ-RETAIL-ALPHA",
+                version_id=requirement_version,
+                content="requirement evidence",
+                score=0.71,
+            ),
         ],
     )
 
@@ -137,16 +157,38 @@ async def test_equal_top_authority_explicit_conflict_is_marked_unresolved() -> N
     v1 = uuid4()
     v2 = uuid4()
     repo = FakeEvidenceGovernanceRepository()
-    repo.records[v1] = _metadata(version_id=v1, project_id=project_id, authority=AuthorityLevel.APPROVED_CHANGE)
-    repo.records[v2] = _metadata(version_id=v2, project_id=project_id, authority=AuthorityLevel.APPROVED_CHANGE)
+    repo.records[v1] = _metadata(
+        version_id=v1, project_id=project_id, authority=AuthorityLevel.APPROVED_CHANGE
+    )
+    repo.records[v2] = _metadata(
+        version_id=v2, project_id=project_id, authority=AuthorityLevel.APPROVED_CHANGE
+    )
     service = EvidenceGovernanceService(repo, today=lambda: date(2026, 8, 8))
 
     pack = await service.pack(
         project_id=project_id,
         project_code="PRJ-RETAIL-ALPHA",
         chunks=[
-            _chunk(project_code="PRJ-RETAIL-ALPHA", version_id=v1, content="锁定 30 分钟", score=0.9, metadata={"conflict_key": "REQ-3.2.1.lock_minutes", "claim_value": "30"}),
-            _chunk(project_code="PRJ-RETAIL-ALPHA", version_id=v2, content="锁定 60 分钟", score=0.8, metadata={"conflict_key": "REQ-3.2.1.lock_minutes", "claim_value": "60"}),
+            _chunk(
+                project_code="PRJ-RETAIL-ALPHA",
+                version_id=v1,
+                content="锁定 30 分钟",
+                score=0.9,
+                metadata={
+                    "conflict_key": "REQ-3.2.1.lock_minutes",
+                    "claim_value": "30",
+                },
+            ),
+            _chunk(
+                project_code="PRJ-RETAIL-ALPHA",
+                version_id=v2,
+                content="锁定 60 分钟",
+                score=0.8,
+                metadata={
+                    "conflict_key": "REQ-3.2.1.lock_minutes",
+                    "claim_value": "60",
+                },
+            ),
         ],
     )
 
@@ -159,16 +201,32 @@ async def test_higher_authority_resolves_explicit_conflict_and_suppresses_lower_
     high = uuid4()
     low = uuid4()
     repo = FakeEvidenceGovernanceRepository()
-    repo.records[high] = _metadata(version_id=high, project_id=project_id, authority=AuthorityLevel.APPROVED_CHANGE)
-    repo.records[low] = _metadata(version_id=low, project_id=project_id, authority=AuthorityLevel.ISSUE_RECORD)
+    repo.records[high] = _metadata(
+        version_id=high, project_id=project_id, authority=AuthorityLevel.APPROVED_CHANGE
+    )
+    repo.records[low] = _metadata(
+        version_id=low, project_id=project_id, authority=AuthorityLevel.ISSUE_RECORD
+    )
     service = EvidenceGovernanceService(repo, today=lambda: date(2026, 8, 8))
 
     pack = await service.pack(
         project_id=project_id,
         project_code="PRJ-RETAIL-ALPHA",
         chunks=[
-            _chunk(project_code="PRJ-RETAIL-ALPHA", version_id=low, content="60", score=0.99, metadata={"conflict_key": "lock", "claim_value": "60"}),
-            _chunk(project_code="PRJ-RETAIL-ALPHA", version_id=high, content="30", score=0.70, metadata={"conflict_key": "lock", "claim_value": "30"}),
+            _chunk(
+                project_code="PRJ-RETAIL-ALPHA",
+                version_id=low,
+                content="60",
+                score=0.99,
+                metadata={"conflict_key": "lock", "claim_value": "60"},
+            ),
+            _chunk(
+                project_code="PRJ-RETAIL-ALPHA",
+                version_id=high,
+                content="30",
+                score=0.70,
+                metadata={"conflict_key": "lock", "claim_value": "30"},
+            ),
         ],
     )
 

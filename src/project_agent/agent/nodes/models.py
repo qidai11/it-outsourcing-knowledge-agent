@@ -5,7 +5,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from project_agent.agent.nodes.resolve_identifiers import IdentifierResolution
-from project_agent.domain.evidence import ConflictDisclosure, GroundedAnswerClaim, GroundedAnswerDraft
+from project_agent.domain.evidence import (
+    ConflictDisclosure as ConflictDisclosure,
+    GroundedAnswerClaim as GroundedAnswerClaim,
+    GroundedAnswerDraft as GroundedAnswerDraft,
+)
 
 
 class RetrievalPlan(BaseModel):

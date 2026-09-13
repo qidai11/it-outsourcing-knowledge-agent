@@ -56,7 +56,11 @@ async def test_two_workers_never_claim_same_postgres_job() -> None:
         assert claimed[0].attempts == 1
     finally:
         async with factory() as session:
-            await session.execute(delete(BackgroundJobModel).where(BackgroundJobModel.id == UUID(created.job_id)))
+            await session.execute(
+                delete(BackgroundJobModel).where(
+                    BackgroundJobModel.id == UUID(created.job_id)
+                )
+            )
             await session.commit()
         await engine.dispose()
 
@@ -70,7 +74,9 @@ async def test_expired_lease_is_reaped_and_can_be_claimed_again() -> None:
     engine = create_engine(url)
     factory = create_session_factory(engine)
     queue = PostgresJobQueue(factory, lease_seconds=60, retry_base_seconds=0, retry_max_seconds=0)
-    created = await queue.enqueue(EnqueueJobRequest(job_type="TEST", aggregate_id=f"task8-reap-{uuid4()}"))
+    created = await queue.enqueue(
+        EnqueueJobRequest(job_type="TEST", aggregate_id=f"task8-reap-{uuid4()}")
+    )
 
     try:
         first = await queue.claim("dead-worker")
@@ -90,6 +96,10 @@ async def test_expired_lease_is_reaped_and_can_be_claimed_again() -> None:
         assert second[0].attempts == 2
     finally:
         async with factory() as session:
-            await session.execute(delete(BackgroundJobModel).where(BackgroundJobModel.id == UUID(created.job_id)))
+            await session.execute(
+                delete(BackgroundJobModel).where(
+                    BackgroundJobModel.id == UUID(created.job_id)
+                )
+            )
             await session.commit()
         await engine.dispose()

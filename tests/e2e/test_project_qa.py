@@ -11,18 +11,30 @@ from project_agent.agent.graph import QAGraphDependencies, build_project_qa_grap
 from project_agent.agent.nodes.analyze_query import QueryAnalysisService
 from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
 from project_agent.agent.policies.access import ProjectAccessPolicy
-from project_agent.application.services.citation_guard import CitationGuard
-from project_agent.application.services.evidence_governance import DocumentEvidenceMetadata, EvidenceGovernanceService
 from project_agent.application.services.authorization import (
     AuthorizationService,
     DocumentAccessRecord,
     MembershipAccessRecord,
 )
+from project_agent.application.services.citation_guard import CitationGuard
+from project_agent.application.services.evidence_governance import (
+    DocumentEvidenceMetadata,
+    EvidenceGovernanceService,
+)
 from project_agent.application.services.identifier_extractor import IdentifierExtractor
 from project_agent.application.services.identifier_registry import IdentifierRegistryService
 from project_agent.application.services.prompt_config import PromptConfigRecord, PromptConfigService
-from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus, ProjectRole
-from project_agent.domain.identifiers import IdentifierRegistryEntry, IdentifierSource, IdentifierType
+from project_agent.domain.enums import (
+    AuthorityLevel,
+    DocumentCategory,
+    DocumentLifecycleStatus,
+    ProjectRole,
+)
+from project_agent.domain.identifiers import (
+    IdentifierRegistryEntry,
+    IdentifierSource,
+    IdentifierType,
+)
 from tests.fakes.authorization import FakeProjectAuthorizationRepository
 from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
 from tests.fakes.identifiers import FakeIdentifierRegistryRepository

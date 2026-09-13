@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from project_agent.application.ports.knowledge import IngestionState
-from project_agent.domain.metadata import MetadataSuggestion
 from project_agent.application.use_cases.delete_document import DeleteDocumentUseCase
 from project_agent.application.use_cases.publish_document import (
     DocumentPublishFailed,
@@ -23,6 +22,7 @@ from project_agent.application.use_cases.upload_document import (
     UploadDocumentUseCase,
 )
 from project_agent.domain.enums import DocumentLifecycleStatus
+from project_agent.domain.metadata import MetadataSuggestion
 from tests.fakes.document_repository import InMemoryDocumentWorkflowRepository
 from tests.fakes.knowledge import FakeKnowledgePort
 from tests.fakes.object_store import InMemoryObjectStore

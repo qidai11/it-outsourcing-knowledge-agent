@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from project_agent.domain.evidence import FrozenEvidenceBundle, GroundedAnswerDraft
 from project_agent.domain.enums import DocumentLifecycleStatus
+from project_agent.domain.evidence import FrozenEvidenceBundle, GroundedAnswerDraft
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +46,10 @@ class CitationGuard:
                 if item.project_id != project_id:
                     errors.append(f"CROSS_PROJECT_EVIDENCE:{label}")
                     claim_valid = False
-                if item.lifecycle_status is not DocumentLifecycleStatus.PUBLISHED or not item.is_current:
+                if (
+                    item.lifecycle_status is not DocumentLifecycleStatus.PUBLISHED
+                    or not item.is_current
+                ):
                     errors.append(f"NON_CURRENT_EVIDENCE:{label}")
                     claim_valid = False
                 if label not in used:

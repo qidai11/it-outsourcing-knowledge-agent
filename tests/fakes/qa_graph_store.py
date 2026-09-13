@@ -4,8 +4,13 @@ from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from project_agent.application.ports.knowledge import KnowledgeChunk
-from project_agent.domain.evidence import CitationReference, FrozenEvidence, FrozenEvidenceBundle, GovernedEvidencePack
 from project_agent.application.services.prompt_config import PromptSnapshot
+from project_agent.domain.evidence import (
+    CitationReference,
+    FrozenEvidence,
+    FrozenEvidenceBundle,
+    GovernedEvidencePack,
+)
 
 
 @dataclass(slots=True)

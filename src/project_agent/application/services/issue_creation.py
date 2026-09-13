@@ -7,7 +7,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from project_agent.application.ports.issue_workflow import IdempotencyStorePort, IssueWorkflowRepository
+from project_agent.application.ports.issue_workflow import (
+    IdempotencyStorePort,
+    IssueWorkflowRepository,
+)
 from project_agent.application.ports.job_queue import EnqueueJobRequest, JobQueuePort
 from project_agent.application.ports.project_tracker import CreatedIssue, ProjectTrackerPort
 from project_agent.application.services.authorization import AuthorizationService

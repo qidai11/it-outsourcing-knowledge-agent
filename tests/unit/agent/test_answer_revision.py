@@ -8,13 +8,13 @@ import pytest
 from project_agent.agent.nodes.citation_guard import citation_guard_node
 from project_agent.agent.nodes.generate_answer import generate_answer_node
 from project_agent.agent.nodes.revise_answer import revise_answer_node
+from project_agent.application.ports.knowledge import KnowledgeChunk
 from project_agent.application.services.citation_guard import CitationGuard
 from project_agent.application.services.evidence_governance import (
     DocumentEvidenceMetadata,
     EvidenceGovernanceService,
 )
 from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus
-from project_agent.application.ports.knowledge import KnowledgeChunk
 from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
 from tests.fakes.llm import FakeStructuredLLM
 from tests.fakes.qa_graph_store import InMemoryQAGraphStore
@@ -121,9 +121,17 @@ async def test_second_invalid_draft_stops_after_one_revision() -> None:
     llm.queue_response(invalid)
     llm.queue_response(invalid)
 
-    state.update(await generate_answer_node(state, llm=llm, llm_usage=llm, store=store, model_alias="fake"))
+    state.update(
+        await generate_answer_node(
+            state, llm=llm, llm_usage=llm, store=store, model_alias="fake"
+        )
+    )
     state.update(await citation_guard_node(state, guard=CitationGuard(), store=store))
-    state.update(await revise_answer_node(state, llm=llm, llm_usage=llm, store=store, model_alias="fake"))
+    state.update(
+        await revise_answer_node(
+            state, llm=llm, llm_usage=llm, store=store, model_alias="fake"
+        )
+    )
     checked = await citation_guard_node(state, guard=CitationGuard(), store=store)
 
     assert checked["route"] == "refusal"

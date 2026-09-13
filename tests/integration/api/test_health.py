@@ -39,7 +39,9 @@ def test_live_does_not_require_external_services(tmp_path: Path) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_ready_reports_configuration_ready_without_calling_external_services(tmp_path: Path) -> None:
+def test_ready_reports_configuration_ready_without_calling_external_services(
+    tmp_path: Path,
+) -> None:
     with TestClient(create_app(_test_settings(tmp_path))) as client:
         response = client.get("/ready")
 

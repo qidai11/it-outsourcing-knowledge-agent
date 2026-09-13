@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-from collections.abc import Awaitable, Callable
-
 import httpx
 import pytest
 

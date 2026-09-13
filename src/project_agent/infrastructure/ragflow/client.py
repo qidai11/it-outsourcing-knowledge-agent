@@ -112,10 +112,11 @@ class RagflowHttpClient:
                 await self._sleep(self._retry_policy.delay_for_retry(attempt))
                 continue
 
-            if response.status_code == 429 or response.status_code >= 500:
-                if attempt < self._retry_policy.max_attempts:
-                    await self._sleep(self._retry_policy.delay_for_retry(attempt))
-                    continue
+            if (
+                response.status_code == 429 or response.status_code >= 500
+            ) and attempt < self._retry_policy.max_attempts:
+                await self._sleep(self._retry_policy.delay_for_retry(attempt))
+                continue
 
             if response.status_code >= 400:
                 message = self._extract_error_message(response)

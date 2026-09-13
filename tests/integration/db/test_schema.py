@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import Index, UniqueConstraint
 
-from project_agent.infrastructure.db.base import Base
 import project_agent.infrastructure.db.models  # noqa: F401
+from project_agent.infrastructure.db.base import Base
 
 
 REQUIRED_TABLES = {

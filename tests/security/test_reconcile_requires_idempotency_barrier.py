@@ -6,7 +6,10 @@ from uuid import uuid4
 import pytest
 
 from project_agent.application.services.authorization import AuthorizationService
-from project_agent.application.services.issue_creation import IssueCreationDenied, IssueCreationService
+from project_agent.application.services.issue_creation import (
+    IssueCreationDenied,
+    IssueCreationService,
+)
 from project_agent.application.services.issue_drafts import IssueDraftService
 from tests.fakes.authorization import FakeProjectAuthorizationRepository
 from tests.fakes.issue_workflow import FakeIdempotencyStore, FakeIssueWorkflowRepository

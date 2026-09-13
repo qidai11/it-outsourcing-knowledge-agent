@@ -34,9 +34,15 @@ class SqlAlchemyProjectAuthorizationRepository:
                 ProjectMembershipModel.user_id == user_id,
                 ProjectMembershipModel.project_id == project_id,
                 ProjectMembershipModel.valid_from <= at,
-                or_(ProjectMembershipModel.valid_to.is_(None), ProjectMembershipModel.valid_to > at),
+                or_(
+                    ProjectMembershipModel.valid_to.is_(None),
+                    ProjectMembershipModel.valid_to > at,
+                ),
                 ProjectModel.lifecycle_status.notin_(
-                    [ProjectLifecycleStatus.DELETION_PENDING.value, ProjectLifecycleStatus.DELETED.value]
+                    [
+                        ProjectLifecycleStatus.DELETION_PENDING.value,
+                        ProjectLifecycleStatus.DELETED.value,
+                    ]
                 ),
             )
             .limit(1)
@@ -65,9 +71,15 @@ class SqlAlchemyProjectAuthorizationRepository:
             .where(
                 ProjectMembershipModel.user_id == user_id,
                 ProjectMembershipModel.valid_from <= at,
-                or_(ProjectMembershipModel.valid_to.is_(None), ProjectMembershipModel.valid_to > at),
+                or_(
+                    ProjectMembershipModel.valid_to.is_(None),
+                    ProjectMembershipModel.valid_to > at,
+                ),
                 ProjectModel.lifecycle_status.notin_(
-                    [ProjectLifecycleStatus.DELETION_PENDING.value, ProjectLifecycleStatus.DELETED.value]
+                    [
+                        ProjectLifecycleStatus.DELETION_PENDING.value,
+                        ProjectLifecycleStatus.DELETED.value,
+                    ]
                 ),
             )
             .order_by(ProjectModel.code)

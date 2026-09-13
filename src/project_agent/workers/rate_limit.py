@@ -61,7 +61,13 @@ class TokenBucket:
 class ModelTokenBucketRegistry:
     """Process-local request/token buckets keyed by model alias."""
 
-    def __init__(self, *, request_capacity: int, token_capacity: int, window_seconds: float = 60) -> None:
+    def __init__(
+        self,
+        *,
+        request_capacity: int,
+        token_capacity: int,
+        window_seconds: float = 60,
+    ) -> None:
         if window_seconds <= 0:
             raise ValueError("window_seconds must be positive")
         self._request_capacity = request_capacity

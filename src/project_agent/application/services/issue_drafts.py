@@ -84,7 +84,10 @@ class IssueDraftService:
         )
         details: list[str] = [draft.description]
         if draft.reproduction_steps:
-            details.append("\nReproduction steps:\n" + "\n".join(f"- {x}" for x in draft.reproduction_steps))
+            details.append(
+                "\nReproduction steps:\n"
+                + "\n".join(f"- {x}" for x in draft.reproduction_steps)
+            )
         if draft.expected_behavior:
             details.append(f"\nExpected behavior:\n{draft.expected_behavior}")
         if draft.actual_behavior:
@@ -116,5 +119,10 @@ class IssueDraftService:
             "error_code": request.error_code,
             "environment": request.environment,
         }
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
         return hashlib.sha256(encoded).hexdigest()

@@ -5,7 +5,11 @@ from uuid import UUID
 
 from project_agent.application.ports.knowledge import KnowledgeChunk
 from project_agent.application.services.prompt_config import PromptSnapshot
-from project_agent.domain.evidence import CitationReference, FrozenEvidenceBundle, GovernedEvidencePack
+from project_agent.domain.evidence import (
+    CitationReference,
+    FrozenEvidenceBundle,
+    GovernedEvidencePack,
+)
 
 
 class QAGraphStorePort(Protocol):

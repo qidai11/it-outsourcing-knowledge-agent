@@ -4,9 +4,12 @@ from uuid import UUID
 
 from project_agent.agent.nodes.models import RetrievalPlan
 from project_agent.agent.nodes.serialization import deserialize_authorized_context
-from project_agent.agent.state import AgentState
 from project_agent.agent.policies.access import ProjectAccessPolicy
-from project_agent.application.ports.knowledge import KnowledgeRetrievalPort, KnowledgeRetrievalRequest
+from project_agent.agent.state import AgentState
+from project_agent.application.ports.knowledge import (
+    KnowledgeRetrievalPort,
+    KnowledgeRetrievalRequest,
+)
 from project_agent.application.ports.qa_graph import QAGraphStorePort
 
 

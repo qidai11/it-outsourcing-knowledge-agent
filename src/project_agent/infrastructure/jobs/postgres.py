@@ -42,7 +42,11 @@ def build_claim_statement(*, limit: int) -> Select[tuple[BackgroundJobModel]]:
             BackgroundJobModel.status == JobState.PENDING.value,
             BackgroundJobModel.available_at <= datetime.now(UTC),
         )
-        .order_by(BackgroundJobModel.available_at, BackgroundJobModel.created_at, BackgroundJobModel.id)
+        .order_by(
+            BackgroundJobModel.available_at,
+            BackgroundJobModel.created_at,
+            BackgroundJobModel.id,
+        )
         .limit(limit)
         .with_for_update(skip_locked=True)
     )

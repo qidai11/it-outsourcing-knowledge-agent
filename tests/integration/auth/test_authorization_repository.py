@@ -7,9 +7,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from project_agent.infrastructure.db.repositories.authorization import (
-    SqlAlchemyProjectAuthorizationRepository,
-)
 from project_agent.infrastructure.db.models.schema import (
     ClientModel,
     DocumentModel,
@@ -17,6 +14,9 @@ from project_agent.infrastructure.db.models.schema import (
     ProjectKnowledgeSpaceModel,
     ProjectMembershipModel,
     ProjectModel,
+)
+from project_agent.infrastructure.db.repositories.authorization import (
+    SqlAlchemyProjectAuthorizationRepository,
 )
 
 pytestmark = pytest.mark.skipif(

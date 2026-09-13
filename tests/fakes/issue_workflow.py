@@ -11,7 +11,6 @@ from project_agent.domain.issues import (
     IssueDraftCreate,
     IssueDraftStatus,
     ToolConfirmationReceipt,
-    ToolConfirmationStatus,
 )
 
 
@@ -32,11 +31,15 @@ class FakeIssueWorkflowRepository:
         return self.drafts[draft_id]
 
     async def set_draft_status(self, draft_id: UUID, status: IssueDraftStatus) -> IssueDraft:
-        draft = self.drafts[draft_id].model_copy(update={"status": status, "updated_at": self._clock()})
+        draft = self.drafts[draft_id].model_copy(
+            update={"status": status, "updated_at": self._clock()}
+        )
         self.drafts[draft_id] = draft
         return draft
 
-    async def save_candidate_links(self, draft_id: UUID, links: tuple[IssueCandidateLink, ...]) -> None:
+    async def save_candidate_links(
+        self, draft_id: UUID, links: tuple[IssueCandidateLink, ...]
+    ) -> None:
         self.candidates[draft_id] = list(links)
 
     async def list_candidate_links(self, draft_id: UUID) -> tuple[IssueCandidateLink, ...]:
@@ -64,7 +67,9 @@ class FakeIdempotencyStore:
         self._clock = clock or (lambda: datetime.now(UTC))
         self.records: dict[tuple[str, str], IdempotencyRecord] = {}
 
-    async def reserve(self, *, namespace: str, request_id: str, project_id: UUID) -> tuple[IdempotencyRecord, bool]:
+    async def reserve(
+        self, *, namespace: str, request_id: str, project_id: UUID
+    ) -> tuple[IdempotencyRecord, bool]:
         key = (namespace, request_id)
         existing = self.records.get(key)
         if existing is not None:
@@ -81,7 +86,15 @@ class FakeIdempotencyStore:
     async def get(self, *, namespace: str, request_id: str) -> IdempotencyRecord | None:
         return self.records.get((namespace, request_id))
 
-    async def complete(self, *, namespace: str, request_id: str, resource_type: str, resource_id: str, response: dict[str, object]) -> IdempotencyRecord:
+    async def complete(
+        self,
+        *,
+        namespace: str,
+        request_id: str,
+        resource_type: str,
+        resource_id: str,
+        response: dict[str, object],
+    ) -> IdempotencyRecord:
         key = (namespace, request_id)
         current = self.records[key]
         done = current.model_copy(update={

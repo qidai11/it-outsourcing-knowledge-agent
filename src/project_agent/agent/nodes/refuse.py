@@ -5,7 +5,6 @@ from uuid import UUID
 from project_agent.agent.state import AgentState
 from project_agent.application.ports.qa_graph import QAGraphStorePort
 
-
 REFUSAL_TEXT = "没有找到足够的已授权证据，无法可靠回答。"
 
 

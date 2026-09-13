@@ -9,12 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from project_agent.application.ports.knowledge import KnowledgeChunk
 from project_agent.application.services.prompt_config import PromptSnapshot
 from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus
-from project_agent.domain.evidence import CitationReference, FrozenEvidence, FrozenEvidenceBundle, GovernedEvidencePack
+from project_agent.domain.evidence import (
+    CitationReference,
+    FrozenEvidence,
+    FrozenEvidenceBundle,
+    GovernedEvidencePack,
+)
 from project_agent.infrastructure.db.models.schema import (
     AgentEventModel,
     AgentRunModel,
-    CitationModel,
     AnswerModel,
+    CitationModel,
     EvidenceBundleModel,
     EvidenceSnapshotModel,
 )
@@ -314,14 +319,22 @@ class SqlAlchemyQAGraphStore:
                     ),
                     provider_ref=row.source_ref,
                     page_no=(
-                        int(metadata["page_no"]) if isinstance(metadata.get("page_no"), int) else None
+                        (
+                            int(metadata["page_no"])
+                            if isinstance(metadata.get("page_no"), int)
+                            else None
+                        )
                     ),
                     section=(
                         str(metadata["section"]) if metadata.get("section") is not None else None
                     ),
                     conflict_key=str(conflict_key) if conflict_key is not None else None,
                     claim_value=(
-                        str(metadata["claim_value"]) if metadata.get("claim_value") is not None else None
+                        (
+                            str(metadata["claim_value"])
+                            if metadata.get("claim_value") is not None
+                            else None
+                        )
                     ),
                     unresolved_conflict=unresolved,
                 )

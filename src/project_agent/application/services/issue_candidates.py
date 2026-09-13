@@ -139,17 +139,23 @@ class IssueCandidateService:
             exact_error = 0.0
             module_match = 0.0
 
-            if query.error_code and issue.error_code:
-                if issue.error_code.upper() == query.error_code.upper():
-                    exact_error = 1.0
-                    reasons.append("exact_error_code")
-                    matched = True
+            if (
+                query.error_code
+                and issue.error_code
+                and issue.error_code.upper() == query.error_code.upper()
+            ):
+                exact_error = 1.0
+                reasons.append("exact_error_code")
+                matched = True
 
-            if query.module and issue.module:
-                if issue.module.casefold() == query.module.casefold():
-                    module_match = 1.0
-                    reasons.append("module_match")
-                    matched = True
+            if (
+                query.module
+                and issue.module
+                and issue.module.casefold() == query.module.casefold()
+            ):
+                module_match = 1.0
+                reasons.append("module_match")
+                matched = True
 
             title_overlap = self._overlap(query_title, self._tokens(issue.title))
             if title_overlap > 0:

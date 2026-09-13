@@ -84,7 +84,13 @@ def _app(tmp_path: Path):
     return app, settings
 
 
-def _token(settings: Settings, *, secret: str = SECRET, expires_at: datetime | None = None, **extra):
+def _token(
+    settings: Settings,
+    *,
+    secret: str = SECRET,
+    expires_at: datetime | None = None,
+    **extra,
+):
     return make_hs256_token(
         user_id=USER_ID,
         secret=secret,

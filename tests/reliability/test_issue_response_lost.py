@@ -5,9 +5,15 @@ from uuid import uuid4
 
 import pytest
 
-from project_agent.application.services.authorization import AuthorizationService, MembershipAccessRecord
+from project_agent.application.services.authorization import (
+    AuthorizationService,
+    MembershipAccessRecord,
+)
 from project_agent.application.services.issue_confirmation import IssueConfirmationService
-from project_agent.application.services.issue_creation import IssueCreationService, IssueCreationStatus
+from project_agent.application.services.issue_creation import (
+    IssueCreationService,
+    IssueCreationStatus,
+)
 from project_agent.application.services.issue_drafts import IssueDraftService
 from project_agent.domain.enums import ProjectRole
 from project_agent.domain.issues import ConfirmationAction
