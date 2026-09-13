@@ -1,0 +1,75 @@
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ==============================
+# Virtual environments
+# ==============================
+.venv/
+venv/
+env/
+ENV/
+
+# ==============================
+# Secrets / local configuration
+# ==============================
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+
+# ==============================
+# LangGraph runtime checkpoints
+# ==============================
+checkpoints/*
+!checkpoints/.gitkeep
+
+*.db
+*.db-shm
+*.db-wal
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+
+# ==============================
+# Local binaries / archives
+# ==============================
+ngrok-v3-stable-linux-amd64.tgz
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# ==============================
+# IDE / OS
+# ==============================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Temporary files
+# ==============================
+*.tmp
+*.bak
+*.swp
+
+# Local evaluation development assets
+.worktrees/
+eval/datasets/
