@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -26,7 +27,7 @@ from project_agent.application.services.authorization import (
 from project_agent.application.services.runs import RunApplicationService
 from project_agent.config import Settings
 from project_agent.domain.enums import ProjectRole
-from project_agent.domain.runs import RunBusinessMode
+from project_agent.domain.runs import AgentEventType, RunBusinessMode, RunStatus
 from project_agent.infrastructure.auth.jwt import JwtIdentityVerifier
 from project_agent.main import create_app
 from project_agent.runtime.api import ApiRuntime
@@ -224,8 +225,6 @@ def test_existing_thread_from_other_project_or_user_is_forbidden(tmp_path: Path)
         )
         return other_project.id, other_user.id
 
-    import asyncio
-
     other_project_thread, other_user_thread = asyncio.run(seed())
 
     with TestClient(h.app) as client:
@@ -284,11 +283,178 @@ def test_get_cross_project_run_without_membership_is_forbidden(tmp_path: Path) -
         )
         return run.id
 
-    import asyncio
-
     run_id = asyncio.run(seed())
 
     with TestClient(h.app) as client:
         response = client.get(f"/api/v1/runs/{run_id}", headers=h.headers())
 
     assert response.status_code == 403
+
+
+def test_run_events_require_bearer_authentication(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    run_id = UUID("77777777-7777-4777-8777-777777777777")
+
+    with TestClient(h.app) as client:
+        missing = client.get(f"/api/v1/runs/{run_id}/events")
+        invalid = client.get(
+            f"/api/v1/runs/{run_id}/events",
+            headers={"Authorization": f"Bearer {h.token(secret='x' * 32)}"},
+        )
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
+
+
+def test_run_events_reject_invalid_last_event_id_before_streaming(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+
+    async def seed() -> UUID:
+        thread = await h.runs.create_thread(
+            company_id=COMPANY,
+            project_id=PROJECT,
+            user_id=USER,
+        )
+        run = await h.runs.create_run(
+            thread_id=thread.id,
+            company_id=COMPANY,
+            project_id=PROJECT,
+            user_id=USER,
+            business_mode=RunBusinessMode.QA,
+        )
+        return run.id
+
+    run_id = asyncio.run(seed())
+
+    with TestClient(h.app) as client:
+        malformed = client.get(
+            f"/api/v1/runs/{run_id}/events",
+            headers={**h.headers(), "Last-Event-ID": "nope"},
+        )
+        negative = client.get(
+            f"/api/v1/runs/{run_id}/events",
+            headers={**h.headers(), "Last-Event-ID": "-1"},
+        )
+
+    assert malformed.status_code == 400
+    assert malformed.json() == {"detail": "invalid Last-Event-ID"}
+    assert negative.status_code == 400
+
+
+def test_run_events_stream_order_replay_terminal_and_leave_job_unchanged(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+
+    with TestClient(h.app) as client:
+        created = client.post("/api/v1/runs", json=h.create_payload(), headers=h.headers())
+        run_id = UUID(created.json()["run_id"])
+        jobs_before = h.jobs.jobs
+
+        async def seed_events() -> None:
+            await h.runs.append_event(
+                run_id=run_id,
+                event_type=AgentEventType.RUN_PROGRESS,
+                payload={"percent": 50},
+            )
+            await h.runs.append_event(
+                run_id=run_id,
+                event_type=AgentEventType.RUN_SUCCEEDED,
+                payload={"summary": "done"},
+            )
+
+        asyncio.run(seed_events())
+
+        full = client.get(f"/api/v1/runs/{run_id}/events", headers=h.headers())
+        replay = client.get(
+            f"/api/v1/runs/{run_id}/events",
+            headers={**h.headers(), "Last-Event-ID": "1"},
+        )
+
+    assert full.status_code == 200
+    assert full.headers["content-type"].startswith("text/event-stream")
+    assert full.headers["cache-control"] == "no-cache"
+    assert full.headers["x-accel-buffering"] == "no"
+    assert [line for line in full.text.splitlines() if line.startswith("id: ")] == [
+        "id: 1",
+        "id: 2",
+        "id: 3",
+    ]
+    assert [line for line in replay.text.splitlines() if line.startswith("id: ")] == [
+        "id: 2",
+        "id: 3",
+    ]
+    assert h.jobs.jobs == jobs_before
+    assert h.runs.runs[run_id].status is RunStatus.QUEUED
+
+
+def test_run_events_enforce_current_membership_not_forged_claims(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+
+    async def seed() -> UUID:
+        thread = await h.runs.create_thread(
+            company_id=COMPANY,
+            project_id=PROJECT,
+            user_id=OTHER_USER,
+        )
+        run = await h.runs.create_run(
+            thread_id=thread.id,
+            company_id=COMPANY,
+            project_id=PROJECT,
+            user_id=OTHER_USER,
+            business_mode=RunBusinessMode.QA,
+        )
+        return run.id
+
+    run_id = asyncio.run(seed())
+    h.auth_repo.memberships[(USER, OTHER_PROJECT)] = _membership(project_id=OTHER_PROJECT)
+
+    with TestClient(h.app) as client:
+        cross_project = client.get(f"/api/v1/runs/{run_id}/events", headers=h.headers())
+
+    h.auth_repo.memberships.clear()
+    with TestClient(h.app) as client:
+        forged = client.get(
+            f"/api/v1/runs/{run_id}/events",
+            headers=h.headers(role="project_manager", project_ids=[str(PROJECT)]),
+        )
+
+    assert cross_project.status_code == 403
+    assert forged.status_code == 403
+
+
+def test_run_events_reconnect_after_terminal_cursor_returns_without_replay(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+
+    async def seed() -> UUID:
+        thread = await h.runs.create_thread(
+            company_id=COMPANY,
+            project_id=PROJECT,
+            user_id=USER,
+        )
+        run = await h.runs.create_run(
+            thread_id=thread.id,
+            company_id=COMPANY,
+            project_id=PROJECT,
+            user_id=USER,
+            business_mode=RunBusinessMode.QA,
+        )
+        await h.runs.append_event(
+            run_id=run.id,
+            event_type=AgentEventType.RUN_SUCCEEDED,
+            payload={},
+        )
+        await h.runs.set_status(run_id=run.id, status=RunStatus.SUCCEEDED)
+        return run.id
+
+    run_id = asyncio.run(seed())
+
+    with TestClient(h.app) as client:
+        response = client.get(
+            f"/api/v1/runs/{run_id}/events",
+            headers={**h.headers(), "Last-Event-ID": "1"},
+        )
+
+    assert response.status_code == 200
+    assert response.text == ""

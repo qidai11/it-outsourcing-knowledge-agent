@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import StreamingResponse
 
 from project_agent.api.dependencies import (
     get_authenticated_identity,
@@ -27,7 +31,14 @@ from project_agent.application.services.runs import (
     RunNotFound,
     ThreadNotFound,
 )
-from project_agent.domain.runs import RunBusinessMode, RunRecord, RunStatus
+from project_agent.domain.runs import (
+    TERMINAL_EVENT_TYPES,
+    TERMINAL_RUN_STATUSES,
+    AgentEventRecord,
+    RunBusinessMode,
+    RunRecord,
+    RunStatus,
+)
 from project_agent.infrastructure.db.repositories.runs import SqlAlchemyRunRepository
 from project_agent.infrastructure.jobs.postgres import SqlAlchemySessionJobEnqueuer
 
@@ -58,6 +69,56 @@ class RunApiServices:
 
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
+
+
+type SleepFn = Callable[[float], Awaitable[None]]
+
+
+def parse_last_event_id(value: str | None) -> int:
+    if value is None or value == "":
+        return 0
+    if not value.isascii() or not value.isdigit():
+        raise ValueError("invalid Last-Event-ID")
+    return int(value, 10)
+
+
+def encode_sse_event(event: AgentEventRecord) -> str:
+    payload = json.dumps(event.payload, ensure_ascii=False, separators=(",", ":"))
+    return (
+        f"id: {event.sequence_no}\n"
+        f"event: {event.event_type.value}\n"
+        f"data: {payload}\n\n"
+    )
+
+
+async def iter_sse_events(
+    *,
+    repository: RunRepository,
+    run_id: UUID,
+    after_sequence: int,
+    poll_seconds: float = 0.25,
+    sleep: SleepFn = asyncio.sleep,
+) -> AsyncIterator[str]:
+    cursor = after_sequence
+    while True:
+        events = await repository.list_events_after(
+            run_id=run_id,
+            after_sequence=cursor,
+            limit=100,
+        )
+        for event in events:
+            yield encode_sse_event(event)
+            cursor = event.sequence_no
+            if event.event_type in TERMINAL_EVENT_TYPES:
+                return
+
+        if events:
+            continue
+
+        run = await repository.get_run(run_id)
+        if run is None or run.status in TERMINAL_RUN_STATUSES:
+            return
+        await sleep(poll_seconds)
 
 
 def get_run_api_services(
@@ -134,3 +195,39 @@ async def get_run(
     except (RunNotFound, ThreadNotFound) as exc:
         raise _not_found(exc) from exc
     return _response(run)
+
+
+@router.get("/{run_id}/events")
+async def stream_run_events(
+    run_id: UUID,
+    identity: Annotated[AuthenticatedIdentity, Depends(get_authenticated_identity)],
+    services: Annotated[RunApiServices, Depends(get_run_api_services)],
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+) -> StreamingResponse:
+    try:
+        after_sequence = parse_last_event_id(last_event_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid Last-Event-ID",
+        ) from exc
+
+    try:
+        await services.runs.get_run(identity=identity, run_id=run_id)
+    except (AuthorizationDenied, RunAccessDenied) as exc:
+        raise _forbidden(exc) from exc
+    except (RunNotFound, ThreadNotFound) as exc:
+        raise _not_found(exc) from exc
+
+    return StreamingResponse(
+        iter_sse_events(
+            repository=services.repository,
+            run_id=run_id,
+            after_sequence=after_sequence,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
