@@ -52,6 +52,60 @@ def build_claim_statement(*, limit: int) -> Select[tuple[BackgroundJobModel]]:
     )
 
 
+def _validate_enqueue_request(request: EnqueueJobRequest) -> None:
+    if not request.aggregate_id.strip():
+        raise ValueError("aggregate_id is required")
+    if request.max_attempts < 1:
+        raise ValueError("max_attempts must be >= 1")
+
+
+def _build_job_model(
+    request: EnqueueJobRequest,
+    *,
+    namespace: str,
+) -> BackgroundJobModel:
+    return BackgroundJobModel(
+        namespace=namespace,
+        job_type=request.job_type,
+        aggregate_id=request.aggregate_id,
+        status=JobState.PENDING.value,
+        attempt_count=0,
+        max_attempts=request.max_attempts,
+    )
+
+
+def _to_job(row: BackgroundJobModel) -> QueuedJob:
+    return QueuedJob(
+        job_id=str(row.id),
+        job_type=row.job_type,
+        aggregate_id=row.aggregate_id,
+        state=JobState(row.status),
+        attempts=row.attempt_count,
+        max_attempts=row.max_attempts,
+        worker_id=row.locked_by,
+        last_error_code=row.last_error,
+        available_at=row.available_at,
+        lease_expires_at=row.lease_expires_at,
+        heartbeat_at=row.heartbeat_at,
+    )
+
+
+class SqlAlchemySessionJobEnqueuer:
+    """Enqueue jobs through an existing request transaction without committing it."""
+
+    def __init__(self, session: AsyncSession, *, namespace: str = "project-agent") -> None:
+        self._session = session
+        self._namespace = namespace
+
+    async def enqueue(self, request: EnqueueJobRequest) -> QueuedJob:
+        _validate_enqueue_request(request)
+        row = _build_job_model(request, namespace=self._namespace)
+        self._session.add(row)
+        await self._session.flush()
+        await self._session.refresh(row)
+        return _to_job(row)
+
+
 class PostgresJobQueue:
     """PostgreSQL-backed queue using row locks and expiring worker leases."""
 
@@ -75,23 +129,13 @@ class PostgresJobQueue:
         self._namespace = namespace
 
     async def enqueue(self, request: EnqueueJobRequest) -> QueuedJob:
-        if not request.aggregate_id.strip():
-            raise ValueError("aggregate_id is required")
-        if request.max_attempts < 1:
-            raise ValueError("max_attempts must be >= 1")
-        row = BackgroundJobModel(
-            namespace=self._namespace,
-            job_type=request.job_type,
-            aggregate_id=request.aggregate_id,
-            status=JobState.PENDING.value,
-            attempt_count=0,
-            max_attempts=request.max_attempts,
-        )
+        _validate_enqueue_request(request)
+        row = _build_job_model(request, namespace=self._namespace)
         async with self._session_factory() as session:
             session.add(row)
             await session.commit()
             await session.refresh(row)
-            return self._to_job(row)
+            return _to_job(row)
 
     async def claim(self, worker_id: str, limit: int = 1) -> list[QueuedJob]:
         if limit < 1:
@@ -108,7 +152,7 @@ class PostgresJobQueue:
                 row.lease_expires_at = now + self._lease
                 row.updated_at = now
             await session.commit()
-            return [self._to_job(row) for row in rows]
+            return [_to_job(row) for row in rows]
 
     async def heartbeat(self, job_id: str, worker_id: str) -> None:
         now = datetime.now(UTC)
@@ -157,7 +201,7 @@ class PostgresJobQueue:
     async def get(self, job_id: str) -> QueuedJob | None:
         async with self._session_factory() as session:
             row = await session.get(BackgroundJobModel, self._uuid(job_id))
-            return None if row is None else self._to_job(row)
+            return None if row is None else _to_job(row)
 
     async def reap_expired(self, *, limit: int = 100) -> int:
         now = datetime.now(UTC)
@@ -214,19 +258,3 @@ class PostgresJobQueue:
             return UUID(job_id)
         except ValueError as exc:
             raise LookupError(job_id) from exc
-
-    @staticmethod
-    def _to_job(row: BackgroundJobModel) -> QueuedJob:
-        return QueuedJob(
-            job_id=str(row.id),
-            job_type=row.job_type,
-            aggregate_id=row.aggregate_id,
-            state=JobState(row.status),
-            attempts=row.attempt_count,
-            max_attempts=row.max_attempts,
-            worker_id=row.locked_by,
-            last_error_code=row.last_error,
-            available_at=row.available_at,
-            lease_expires_at=row.lease_expires_at,
-            heartbeat_at=row.heartbeat_at,
-        )

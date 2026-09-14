@@ -36,9 +36,12 @@ class QueuedJob:
 
 
 @runtime_checkable
-class JobQueuePort(Protocol):
+class JobEnqueuePort(Protocol):
     async def enqueue(self, request: EnqueueJobRequest) -> QueuedJob: ...
 
+
+@runtime_checkable
+class JobQueuePort(JobEnqueuePort, Protocol):
     async def claim(self, worker_id: str, limit: int = 1) -> list[QueuedJob]: ...
 
     async def heartbeat(self, job_id: str, worker_id: str) -> None: ...
