@@ -15,6 +15,7 @@ from project_agent.domain.evidence import (
     FrozenEvidenceBundle,
     GovernedEvidencePack,
 )
+from project_agent.domain.runs import AgentEventType
 from project_agent.infrastructure.db.models.schema import (
     AgentEventModel,
     AgentRunModel,
@@ -40,17 +41,19 @@ class SqlAlchemyQAGraphStore:
             select(AgentEventModel.payload_json)
             .where(
                 AgentEventModel.run_id == run_id,
-                AgentEventModel.event_type == "USER_QUERY",
+                AgentEventModel.event_type.in_(
+                    [AgentEventType.RUN_QUEUED.value, "USER_QUERY"]
+                ),
             )
             .order_by(AgentEventModel.sequence_no)
             .limit(1)
         )
         payload = (await self._session.execute(stmt)).scalar_one_or_none()
         if not isinstance(payload, dict):
-            raise LookupError(f"run {run_id} has no USER_QUERY event")
+            raise LookupError(f"run {run_id} has no durable query event")
         query = payload.get("query_text", payload.get("query"))
         if not isinstance(query, str) or not query.strip():
-            raise ValueError(f"run {run_id} USER_QUERY event is missing query text")
+            raise ValueError(f"run {run_id} durable query event is missing query text")
         return query
 
     async def _next_sequence(self, run_id: UUID) -> int:
