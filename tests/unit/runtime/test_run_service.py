@@ -7,9 +7,9 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-from tests.fakes.run_repository import FakeRunRepository
 from tests.fakes.authorization import FakeProjectAuthorizationRepository
 from tests.fakes.job_queue import FakeJobQueue
+from tests.fakes.run_repository import FakeRunRepository
 
 from project_agent.application.ports.job_queue import EnqueueJobRequest
 from project_agent.application.services.authorization import (

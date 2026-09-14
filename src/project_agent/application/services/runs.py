@@ -72,9 +72,10 @@ class RunApplicationService:
                 user_id=identity.user_id,
             )
         else:
-            thread = await self._repository.get_thread(command.thread_id)
-            if thread is None:
+            existing_thread = await self._repository.get_thread(command.thread_id)
+            if existing_thread is None:
                 raise ThreadNotFound(f"thread {command.thread_id} not found")
+            thread = existing_thread
             if (
                 thread.project_id != command.project_id
                 or thread.company_id != company_id
