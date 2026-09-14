@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import delete, func, select
+from tests.helpers.jwt import make_hs256_token
 
 from project_agent.config import Settings
 from project_agent.infrastructure.db.models.schema import (
@@ -22,7 +23,6 @@ from project_agent.infrastructure.db.models.schema import (
 )
 from project_agent.infrastructure.db.session import create_engine, create_session_factory
 from project_agent.main import create_app
-from tests.helpers.jwt import make_hs256_token
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_POSTGRES_INTEGRATION") != "1",
@@ -54,6 +54,7 @@ async def test_same_valid_jwt_is_rejected_after_postgres_membership_revocation(
                     status="active",
                 )
             )
+            await session.flush()
             session.add(
                 ProjectModel(
                     id=project_id,
@@ -65,6 +66,7 @@ async def test_same_valid_jwt_is_rejected_after_postgres_membership_revocation(
                     lifecycle_status="ACTIVE",
                 )
             )
+            await session.flush()
             session.add(
                 ProjectMembershipModel(
                     project_id=project_id,

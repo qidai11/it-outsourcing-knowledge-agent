@@ -33,7 +33,12 @@ class RagflowRetryPolicy:
     def delay_for_retry(self, retry_number: int) -> float:
         if retry_number < 1:
             raise ValueError("retry_number must be >= 1")
-        return min(self.base_delay_seconds * (2 ** (retry_number - 1)), self.max_delay_seconds)
+        return float(
+            min(
+                self.base_delay_seconds * (2.0 ** (retry_number - 1)),
+                self.max_delay_seconds,
+            )
+        )
 
 
 class RagflowHttpClient:

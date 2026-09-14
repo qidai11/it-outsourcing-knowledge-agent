@@ -10,6 +10,11 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from tests.fakes.authorization import FakeProjectAuthorizationRepository
+from tests.fakes.document_repository import InMemoryDocumentWorkflowRepository
+from tests.fakes.knowledge import FakeKnowledgePort
+from tests.fakes.object_store import InMemoryObjectStore
+from tests.helpers.jwt import make_hs256_token
 
 from project_agent.api.v1.documents import (
     DocumentApiServices,
@@ -34,11 +39,6 @@ from project_agent.infrastructure.auth.jwt import JwtIdentityVerifier
 from project_agent.infrastructure.db.session import create_engine, create_session_factory
 from project_agent.main import create_app
 from project_agent.runtime.api import ApiRuntime
-from tests.fakes.authorization import FakeProjectAuthorizationRepository
-from tests.fakes.document_repository import InMemoryDocumentWorkflowRepository
-from tests.fakes.knowledge import FakeKnowledgePort
-from tests.fakes.object_store import InMemoryObjectStore
-from tests.helpers.jwt import make_hs256_token
 
 NOW = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
 SECRET = "s" * 32

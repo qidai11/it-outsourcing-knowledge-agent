@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from tests.fakes.authorization import FakeProjectAuthorizationRepository
 
 from project_agent.application.services.authorization import (
     AuthorizationDenied,
@@ -11,8 +12,6 @@ from project_agent.application.services.authorization import (
     MembershipAccessRecord,
 )
 from project_agent.domain.enums import ProjectRole
-from tests.fakes.authorization import FakeProjectAuthorizationRepository
-
 
 USER = UUID("11111111-1111-4111-8111-111111111111")
 ALPHA = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")

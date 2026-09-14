@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -31,7 +32,7 @@ class PromptConfigService:
         repository: PromptConfigRepository,
         *,
         ttl_seconds: float = 30,
-        clock=time.monotonic,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if ttl_seconds < 0:
             raise ValueError("ttl_seconds cannot be negative")

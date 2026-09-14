@@ -51,7 +51,9 @@ def test_ready_reports_configuration_ready_without_calling_external_services(
 
 def test_invalid_environment_keeps_live_available_and_ready_not_ready(
     monkeypatch,
+    tmp_path: Path,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     for name in (
         "APP_ENV",
         "DATABASE_URL",

@@ -44,8 +44,8 @@ def test_sandbox_search_rejects_invalid_limit() -> None:
 
 
 def test_project_issue_mapping_keeps_created_at() -> None:
-    from project_agent.infrastructure.project_tracker.sandbox import SandboxProjectTrackerAdapter
     from project_agent.infrastructure.db.models.schema import SandboxIssueModel
+    from project_agent.infrastructure.project_tracker.sandbox import SandboxProjectTrackerAdapter
 
     created_at = datetime(2026, 8, 8, 1, 2, 3, tzinfo=UTC)
     model = SandboxIssueModel(

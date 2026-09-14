@@ -28,7 +28,7 @@ def compute_retry_delay(
         raise ValueError("retry delays cannot be negative")
     if base_seconds == 0:
         return 0.0
-    return min(base_seconds * (2 ** max(0, attempt_count - 1)), max_seconds)
+    return float(min(base_seconds * (2.0 ** max(0, attempt_count - 1)), max_seconds))
 
 
 def should_retry(*, attempt_count: int, max_attempts: int) -> bool:

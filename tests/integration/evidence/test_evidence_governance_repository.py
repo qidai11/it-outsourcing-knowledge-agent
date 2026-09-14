@@ -33,6 +33,7 @@ async def test_repository_enriches_authority_and_marks_only_latest_published_ver
 
     async with sessions() as session:
         session.add(ClientModel(id=client_id, company_id=company_id, name="Evidence Client"))
+        await session.flush()
         session.add(ProjectModel(
             id=project_id,
             company_id=company_id,
@@ -42,6 +43,7 @@ async def test_repository_enriches_authority_and_marks_only_latest_published_ver
             phase="test",
             manager_id=manager_id,
         ))
+        await session.flush()
         doc = DocumentModel(
             company_id=company_id,
             project_id=project_id,

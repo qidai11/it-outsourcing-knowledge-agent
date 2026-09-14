@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from project_agent.application.ports.llm import StructuredLLMPort, StructuredLLMRequest
 from tests.fakes.llm import FakeStructuredLLM
@@ -38,7 +38,7 @@ async def test_fake_structured_llm_rejects_invalid_structured_output() -> None:
     llm = FakeStructuredLLM()
     llm.queue_response({"route": "invalid-route"})
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         await llm.generate(
             StructuredLLMRequest(
                 request_id="llm-2",

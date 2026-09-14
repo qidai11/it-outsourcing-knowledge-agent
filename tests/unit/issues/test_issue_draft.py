@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from tests.fakes.issue_workflow import FakeIssueWorkflowRepository
 
 from project_agent.application.services.issue_candidates import (
     IssueCandidate,
@@ -11,7 +12,6 @@ from project_agent.application.services.issue_candidates import (
 )
 from project_agent.application.services.issue_drafts import IssueDraftService
 from project_agent.domain.issues import IssueDraftStatus
-from tests.fakes.issue_workflow import FakeIssueWorkflowRepository
 
 
 @pytest.mark.asyncio

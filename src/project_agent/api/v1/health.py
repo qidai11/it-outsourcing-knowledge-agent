@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from project_agent.config import Settings
+from project_agent.config import Settings, load_settings
 
 router = APIRouter(tags=["health"])
 
@@ -13,7 +13,7 @@ def _resolve_settings(request: Request) -> Settings:
     injected_settings = getattr(request.app.state, "settings", None)
     if isinstance(injected_settings, Settings):
         return injected_settings
-    return Settings()
+    return load_settings()
 
 
 @router.get("/live")

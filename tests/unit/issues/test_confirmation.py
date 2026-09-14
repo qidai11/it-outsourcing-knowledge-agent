@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from tests.fakes.issue_workflow import FakeIssueWorkflowRepository
 
 from project_agent.application.services.issue_confirmation import (
     ConfirmationPayloadMismatch,
@@ -11,7 +12,6 @@ from project_agent.application.services.issue_confirmation import (
 )
 from project_agent.application.services.issue_drafts import IssueDraftService
 from project_agent.domain.issues import ConfirmationAction, ToolConfirmationStatus
-from tests.fakes.issue_workflow import FakeIssueWorkflowRepository
 
 
 @pytest.mark.asyncio

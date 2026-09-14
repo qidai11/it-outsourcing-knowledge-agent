@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import date
 from uuid import uuid4
 
+from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
+
 from project_agent.application.ports.knowledge import KnowledgeChunk
 from project_agent.application.services.evidence_governance import (
     DocumentEvidenceMetadata,
     EvidenceGovernanceService,
 )
 from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus
-from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
 
 
 def _metadata(

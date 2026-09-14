@@ -4,6 +4,10 @@ from datetime import date
 from uuid import UUID, uuid4
 
 import pytest
+from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
+from tests.fakes.knowledge import FakeKnowledgePort
+from tests.fakes.llm import FakeStructuredLLM
+from tests.fakes.qa_graph_store import InMemoryQAGraphStore
 
 from project_agent.agent.nodes.citation_guard import citation_guard_node
 from project_agent.agent.nodes.generate_answer import generate_answer_node
@@ -26,10 +30,6 @@ from project_agent.domain.enums import (
     DocumentLifecycleStatus,
     ProjectRole,
 )
-from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
-from tests.fakes.knowledge import FakeKnowledgePort
-from tests.fakes.llm import FakeStructuredLLM
-from tests.fakes.qa_graph_store import InMemoryQAGraphStore
 
 
 @pytest.mark.asyncio

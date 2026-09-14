@@ -4,6 +4,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from tests.fakes.authorization import FakeProjectAuthorizationRepository
+from tests.fakes.issue_workflow import FakeIdempotencyStore, FakeIssueWorkflowRepository
+from tests.fakes.job_queue import FakeJobQueue
+from tests.fakes.project_tracker import SandboxProjectTrackerAdapter
 
 from project_agent.application.services.authorization import AuthorizationService
 from project_agent.application.services.issue_creation import (
@@ -11,10 +15,6 @@ from project_agent.application.services.issue_creation import (
     IssueCreationService,
 )
 from project_agent.application.services.issue_drafts import IssueDraftService
-from tests.fakes.authorization import FakeProjectAuthorizationRepository
-from tests.fakes.issue_workflow import FakeIdempotencyStore, FakeIssueWorkflowRepository
-from tests.fakes.job_queue import FakeJobQueue
-from tests.fakes.project_tracker import SandboxProjectTrackerAdapter
 
 
 @pytest.mark.asyncio

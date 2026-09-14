@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from tests.fakes.identifiers import FakeIdentifierRegistryRepository
 
 from project_agent.agent.nodes.analyze_query import QueryAnalysisService
 from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
@@ -13,7 +14,6 @@ from project_agent.domain.identifiers import (
     IdentifierSource,
     IdentifierType,
 )
-from tests.fakes.identifiers import FakeIdentifierRegistryRepository
 
 
 @pytest.mark.asyncio

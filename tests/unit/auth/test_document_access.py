@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from tests.fakes.authorization import FakeProjectAuthorizationRepository
+from tests.fakes.document_repository import InMemoryDocumentWorkflowRepository
 
 from project_agent.application.services.authorization import (
     AuthenticatedIdentity,
@@ -17,8 +19,6 @@ from project_agent.application.services.document_access import (
     DocumentOperation,
 )
 from project_agent.domain.enums import DocumentLifecycleStatus, ProjectRole
-from tests.fakes.authorization import FakeProjectAuthorizationRepository
-from tests.fakes.document_repository import InMemoryDocumentWorkflowRepository
 
 NOW = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
 USER = UUID("11111111-1111-4111-8111-111111111111")

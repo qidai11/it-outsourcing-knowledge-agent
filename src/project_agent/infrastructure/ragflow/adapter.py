@@ -77,7 +77,7 @@ class RagflowAdapter:
         embedding_model: str | None = None,
         chunk_method: str = "naive",
         retry_policy: RagflowRetryPolicy | None = None,
-    ) -> "RagflowAdapter":
+    ) -> RagflowAdapter:
         return cls(
             RagflowHttpClient(http, api_key=api_key, retry_policy=retry_policy),
             object_store=object_store,

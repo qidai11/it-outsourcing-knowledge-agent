@@ -5,7 +5,6 @@ from sqlalchemy import Index, UniqueConstraint
 import project_agent.infrastructure.db.models  # noqa: F401
 from project_agent.infrastructure.db.base import Base
 
-
 REQUIRED_TABLES = {
     "clients",
     "projects",
@@ -48,7 +47,7 @@ def _unique_column_sets(table_name: str) -> set[tuple[str, ...]]:
 
 
 def test_required_tables_exist() -> None:
-    assert REQUIRED_TABLES <= set(Base.metadata.tables)
+    assert set(Base.metadata.tables) >= REQUIRED_TABLES
 
 
 def test_required_unique_constraints_exist() -> None:

@@ -123,6 +123,9 @@ def test_unresolved_conflict_requires_disclosure_citing_both_sides() -> None:
 
     disclosed = GroundedAnswerDraft.model_validate({
         "claims": [{"text": "当前证据存在冲突。", "evidence_ids": ["E1", "E2"]}],
-        "conflict_disclosure": {"text": "E1 与 E2 对锁定时长存在冲突，无法确定唯一值。", "evidence_ids": ["E1", "E2"]},
+        "conflict_disclosure": {
+            "text": "E1 与 E2 对锁定时长存在冲突，无法确定唯一值。",
+            "evidence_ids": ["E1", "E2"],
+        },
     })
     assert CitationGuard().validate(disclosed, bundle=bundle, project_id=project_id).valid is True

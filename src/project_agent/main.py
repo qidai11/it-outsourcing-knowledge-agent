@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from project_agent.api.v1.documents import router as documents_router
 from project_agent.api.v1.health import router as health_router
-from project_agent.config import Settings
+from project_agent.config import Settings, load_settings
 from project_agent.runtime.api import ApiRuntimeFactory, build_api_runtime
 
 
@@ -22,7 +22,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
-            resolved_settings = settings if settings is not None else Settings()
+            resolved_settings = settings if settings is not None else load_settings()
         except ValidationError:
             app.state.settings = None
             app.state.runtime = None

@@ -22,7 +22,7 @@ async def revise_answer_node(
     guard_payload = await store.load_artifact(UUID(state["citation_guard_id"]))
     raw_errors = guard_payload.get("errors", [])
     errors = tuple(str(value) for value in raw_errors) if isinstance(raw_errors, list) else ()
-    next_state = dict(state)
+    next_state = state.copy()
     next_state["revision_count"] = revision_count + 1
     draft_id, _ = await _generate_draft(
         next_state,

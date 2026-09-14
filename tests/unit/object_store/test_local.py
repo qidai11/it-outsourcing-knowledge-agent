@@ -13,7 +13,6 @@ from project_agent.infrastructure.object_store.local import (
     ObjectStoreConflictError,
 )
 
-
 FIXED_UUID = UUID("11111111-1111-4111-8111-111111111111")
 
 

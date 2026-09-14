@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from tests.fakes.knowledge import FakeKnowledgePort
+from tests.fakes.object_store import InMemoryObjectStore
 
 from project_agent.config import Settings
 from project_agent.infrastructure.auth.jwt import JwtIdentityVerifier
@@ -15,8 +17,6 @@ from project_agent.infrastructure.object_store.local import LocalFileObjectStore
 from project_agent.infrastructure.ragflow.adapter import RagflowAdapter
 from project_agent.main import create_app
 from project_agent.runtime.api import ApiRuntime, build_api_runtime
-from tests.fakes.knowledge import FakeKnowledgePort
-from tests.fakes.object_store import InMemoryObjectStore
 
 
 def make_settings(*, database_url: str, local_storage_root: Path) -> Settings:

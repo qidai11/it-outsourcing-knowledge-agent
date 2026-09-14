@@ -10,6 +10,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from tests.fakes.knowledge import FakeKnowledgePort
+from tests.fakes.object_store import InMemoryObjectStore
+from tests.helpers.jwt import make_hs256_token
 
 from project_agent.api.dependencies import get_authenticated_identity
 from project_agent.application.services.authorization import AuthenticatedIdentity
@@ -18,9 +21,6 @@ from project_agent.infrastructure.auth.jwt import JwtIdentityVerifier
 from project_agent.infrastructure.db.session import create_engine, create_session_factory
 from project_agent.main import create_app
 from project_agent.runtime.api import ApiRuntime
-from tests.fakes.knowledge import FakeKnowledgePort
-from tests.fakes.object_store import InMemoryObjectStore
-from tests.helpers.jwt import make_hs256_token
 
 NOW = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
 USER_ID = UUID("11111111-1111-4111-8111-111111111111")

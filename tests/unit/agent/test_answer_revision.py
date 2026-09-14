@@ -4,6 +4,9 @@ from datetime import date
 from uuid import UUID, uuid4
 
 import pytest
+from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
+from tests.fakes.llm import FakeStructuredLLM
+from tests.fakes.qa_graph_store import InMemoryQAGraphStore
 
 from project_agent.agent.nodes.citation_guard import citation_guard_node
 from project_agent.agent.nodes.generate_answer import generate_answer_node
@@ -15,9 +18,6 @@ from project_agent.application.services.evidence_governance import (
     EvidenceGovernanceService,
 )
 from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus
-from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
-from tests.fakes.llm import FakeStructuredLLM
-from tests.fakes.qa_graph_store import InMemoryQAGraphStore
 
 
 async def _seed_state():
@@ -144,6 +144,7 @@ async def test_citation_persistence_keeps_original_evidence_number() -> None:
     bundle_id = UUID(state["evidence_bundle_id"])
     original = store.governed_bundles[bundle_id]
     from dataclasses import replace
+
     from project_agent.domain.evidence import FrozenEvidenceBundle
 
     e1 = original.evidence[0]

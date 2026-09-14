@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, Self
+from typing import Literal, Self, cast
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -64,3 +65,10 @@ class Settings(BaseSettings):
         ):
             raise ValueError("staging requires a non-default JWT secret of at least 32 bytes")
         return self
+
+
+def load_settings() -> Settings:
+    """Load settings from BaseSettings sources such as environment variables and .env."""
+
+    settings_factory = cast(Callable[[], Settings], Settings)
+    return settings_factory()

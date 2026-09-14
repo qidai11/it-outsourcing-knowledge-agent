@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
-from typing import Protocol, TypeAlias
+from typing import Protocol
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -32,7 +32,7 @@ class ApiRuntime:
     jwt_verifier: JwtIdentityVerifier
 
 
-ApiRuntimeFactory: TypeAlias = Callable[[Settings], AbstractAsyncContextManager[ApiRuntime]]
+type ApiRuntimeFactory = Callable[[Settings], AbstractAsyncContextManager[ApiRuntime]]
 
 
 @asynccontextmanager

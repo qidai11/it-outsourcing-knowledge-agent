@@ -23,8 +23,9 @@ class BackgroundWorker:
         handlers: HandlerRegistry,
         *,
         worker_id: str,
-        settings: WorkerSettings = WorkerSettings(),
+        settings: WorkerSettings | None = None,
     ) -> None:
+        settings = settings or WorkerSettings()
         if settings.concurrency < 1:
             raise ValueError("worker concurrency must be >= 1")
         if settings.claim_limit < 1:
@@ -49,10 +50,10 @@ class BackgroundWorker:
         while not self._stop.is_set():
             count = await self.run_once()
             if count == 0:
-                try:
-                    await asyncio.wait_for(self._stop.wait(), timeout=self._settings.poll_seconds)
-                except TimeoutError:
-                    pass
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        self._stop.wait(), timeout=self._settings.poll_seconds
+                    )
 
     def stop(self) -> None:
         self._stop.set()

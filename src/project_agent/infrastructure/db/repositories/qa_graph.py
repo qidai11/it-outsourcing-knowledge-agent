@@ -319,22 +319,18 @@ class SqlAlchemyQAGraphStore:
                     ),
                     provider_ref=row.source_ref,
                     page_no=(
-                        (
-                            int(metadata["page_no"])
-                            if isinstance(metadata.get("page_no"), int)
-                            else None
-                        )
+                        int(metadata["page_no"])
+                        if isinstance(metadata.get("page_no"), int)
+                        else None
                     ),
                     section=(
                         str(metadata["section"]) if metadata.get("section") is not None else None
                     ),
                     conflict_key=str(conflict_key) if conflict_key is not None else None,
                     claim_value=(
-                        (
-                            str(metadata["claim_value"])
-                            if metadata.get("claim_value") is not None
-                            else None
-                        )
+                        str(metadata["claim_value"])
+                        if metadata.get("claim_value") is not None
+                        else None
                     ),
                     unresolved_conflict=unresolved,
                 )

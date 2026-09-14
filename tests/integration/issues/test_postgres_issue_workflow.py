@@ -43,6 +43,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
 
     async with sessions() as session:
         session.add(ClientModel(id=client_id, company_id=company_id, name="Issue Client"))
+        await session.flush()
         session.add(
             ProjectModel(
                 id=project_id,
@@ -54,6 +55,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 manager_id=user_id,
             )
         )
+        await session.flush()
         session.add(
             ThreadModel(
                 id=thread_id,
@@ -63,6 +65,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 title="Issue workflow test",
             )
         )
+        await session.flush()
         session.add(
             AgentRunModel(
                 id=run_id,
@@ -80,6 +83,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 name="Issue Sandbox",
             )
         )
+        await session.flush()
         session.add(
             SandboxIssueModel(
                 id=existing_issue_id,

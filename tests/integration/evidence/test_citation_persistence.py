@@ -37,6 +37,7 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
 
     async with sessions() as session:
         session.add(ClientModel(id=client_id, company_id=company_id, name="Citation Client"))
+        await session.flush()
         session.add(ProjectModel(
             id=project_id,
             company_id=company_id,
@@ -46,6 +47,7 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
             phase="test",
             manager_id=user_id,
         ))
+        await session.flush()
         doc = DocumentModel(
             company_id=company_id,
             project_id=project_id,
@@ -70,6 +72,7 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
             project_id=project_id,
             user_id=user_id,
         ))
+        await session.flush()
         session.add(AgentRunModel(
             id=run_id,
             thread_id=thread_id,

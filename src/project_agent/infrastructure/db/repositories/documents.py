@@ -45,9 +45,10 @@ class SqlAlchemyDocumentWorkflowRepository:
             self._session.add(document)
             await self._session.flush()
         else:
-            document = await self._session.get(DocumentModel, draft.document_id)
-            if document is None:
+            existing_document = await self._session.get(DocumentModel, draft.document_id)
+            if existing_document is None:
                 raise LookupError(f"document {draft.document_id} does not exist")
+            document = existing_document
             if document.project_id != draft.project_id:
                 raise ValueError("document cannot move across projects")
             if document.document_category != draft.document_category:
