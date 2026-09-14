@@ -5,11 +5,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests.fakes.run_repository import FakeRunRepository
 
 from project_agent.application.ports.job_queue import EnqueueJobRequest
 from project_agent.domain.runs import AgentEventType, RunBusinessMode, RunStatus
 from project_agent.infrastructure.jobs.postgres import SqlAlchemySessionJobEnqueuer
-from tests.fakes.run_repository import FakeRunRepository
 
 
 class RecordingSession:
@@ -22,7 +22,7 @@ class RecordingSession:
     def add(self, row: object) -> None:
         self.added.append(row)
         if getattr(row, "id", None) is None:
-            setattr(row, "id", uuid4())
+            row.id = uuid4()
 
     async def flush(self) -> None:
         self.flush_calls += 1

@@ -35,7 +35,7 @@ class RepositorySession:
     def add(self, row: object) -> None:
         self.added.append(row)
         if getattr(row, "id", None) is None:
-            setattr(row, "id", uuid4())
+            row.id = uuid4()
 
     async def flush(self) -> None:
         self.flush_calls += 1

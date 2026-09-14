@@ -4,12 +4,12 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 from project_agent.domain.runs import (
+    TERMINAL_EVENT_TYPES,
     AgentEventRecord,
     AgentEventType,
     RunBusinessMode,
     RunRecord,
     RunStatus,
-    TERMINAL_EVENT_TYPES,
     ThreadRecord,
 )
 

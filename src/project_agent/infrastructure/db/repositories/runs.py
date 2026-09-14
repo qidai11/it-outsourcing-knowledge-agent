@@ -7,12 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from project_agent.application.ports.run_repository import RunRepository
 from project_agent.domain.runs import (
+    TERMINAL_EVENT_TYPES,
     AgentEventRecord,
     AgentEventType,
     RunBusinessMode,
     RunRecord,
     RunStatus,
-    TERMINAL_EVENT_TYPES,
     ThreadRecord,
 )
 from project_agent.infrastructure.db.models.schema import (

@@ -6,12 +6,12 @@ from uuid import uuid4
 import pytest
 
 from project_agent.domain.runs import (
+    TERMINAL_EVENT_TYPES,
+    TERMINAL_RUN_STATUSES,
     AgentEventType,
     RunBusinessMode,
     RunJobType,
     RunStatus,
-    TERMINAL_EVENT_TYPES,
-    TERMINAL_RUN_STATUSES,
     ThreadRecord,
 )
 
@@ -51,17 +51,17 @@ def test_ws2_run_vocabulary_is_stable() -> None:
 
 
 def test_terminal_sets_only_contain_terminal_values() -> None:
-    assert TERMINAL_RUN_STATUSES == frozenset(
+    assert frozenset(
         {RunStatus.SUCCEEDED, RunStatus.REFUSED, RunStatus.CANCELLED, RunStatus.FAILED}
-    )
-    assert TERMINAL_EVENT_TYPES == frozenset(
+    ) == TERMINAL_RUN_STATUSES
+    assert frozenset(
         {
             AgentEventType.RUN_SUCCEEDED,
             AgentEventType.RUN_REFUSED,
             AgentEventType.RUN_CANCELLED,
             AgentEventType.RUN_FAILED,
         }
-    )
+    ) == TERMINAL_EVENT_TYPES
 
 
 def test_thread_record_is_frozen() -> None:
