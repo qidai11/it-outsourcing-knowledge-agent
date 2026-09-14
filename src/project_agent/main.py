@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from project_agent.api.v1.documents import router as documents_router
 from project_agent.api.v1.health import router as health_router
+from project_agent.api.v1.runs import router as runs_router
 from project_agent.config import Settings, load_settings
 from project_agent.runtime.api import ApiRuntimeFactory, build_api_runtime
 
@@ -46,6 +47,7 @@ def create_app(
     app.state.runtime = None
     app.include_router(health_router)
     app.include_router(documents_router)
+    app.include_router(runs_router)
     return app
 
 
