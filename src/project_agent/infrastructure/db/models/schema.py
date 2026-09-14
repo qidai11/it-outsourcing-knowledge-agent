@@ -31,6 +31,7 @@ from project_agent.domain.enums import (
     ProjectDeliveryMode,
     ProjectLifecycleStatus,
 )
+from project_agent.domain.runs import RunStatus
 from project_agent.infrastructure.db.base import Base
 
 UUID_PK = Uuid(as_uuid=True)
@@ -411,7 +412,13 @@ class AgentRunModel(Base):
         nullable=False,
     )
     user_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="RUNNING", index=True)
+    business_mode: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=RunStatus.QUEUED.value,
+        index=True,
+    )
     model_alias: Mapped[str | None] = mapped_column(String(128))
     prompt_version: Mapped[str | None] = mapped_column(String(64))
     prompt_content_hash: Mapped[str | None] = mapped_column(String(128))
@@ -422,11 +429,7 @@ class AgentRunModel(Base):
     ocr_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_cost_microunits: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     cost_currency: Mapped[str] = mapped_column(String(8), nullable=False, default="USD")
-    started_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP,
-        nullable=False,
-        server_default=func.now(),
-    )
+    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
 
 

@@ -93,6 +93,13 @@ def test_agent_runs_contains_prompt_usage_and_cost_fields() -> None:
     assert expected <= columns
 
 
+
+def test_agent_runs_supports_ws2_runtime_envelope() -> None:
+    table = Base.metadata.tables["agent_runs"]
+    assert "business_mode" in table.columns
+    assert table.columns["business_mode"].nullable is True
+    assert table.columns["started_at"].nullable is True
+
 def test_governance_tables_exist_with_required_fields() -> None:
     system_config_columns = set(Base.metadata.tables["system_configs"].columns.keys())
     retention_columns = set(Base.metadata.tables["data_retention_policies"].columns.keys())
