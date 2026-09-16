@@ -6,6 +6,7 @@ from types import MappingProxyType
 from uuid import uuid4
 
 import pytest
+from tests.fakes.run_repository import FakeRunRepository
 
 from project_agent.application.ports.run_graph import RunGraphOutcome, RunGraphOutcomeKind
 from project_agent.application.services.run_execution import (
@@ -13,7 +14,6 @@ from project_agent.application.services.run_execution import (
     RunExecutionService,
 )
 from project_agent.domain.runs import AgentEventType, RunBusinessMode, RunStatus
-from tests.fakes.run_repository import FakeRunRepository
 
 NOW = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
 HASH = "a" * 64
