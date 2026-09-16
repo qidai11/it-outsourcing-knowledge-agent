@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = 1.0
     worker_retry_base_seconds: float = 5.0
     worker_retry_max_seconds: float = 300.0
+    worker_ingest_document_enabled: bool = False
+    worker_delete_document_enabled: bool = False
     llm_rate_window_seconds: float = 60.0
     llm_rate_limit_wait_timeout_seconds: float = 30.0
     jwt_hs256_secret: SecretStr = SecretStr("replace-me-with-at-least-32-bytes!!")
