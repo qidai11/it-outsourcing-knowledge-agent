@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from project_agent.application.ports.job_queue import QueuedJob
+
 
 @dataclass(frozen=True, slots=True)
 class RetentionCandidate:
@@ -33,8 +35,8 @@ class RetentionSweepHandler:
         self._repository = repository
         self._dry_run = dry_run
 
-    async def __call__(self, policy_id: str) -> RetentionSweepResult:
-        candidates = await self._repository.list_candidates(policy_id)
+    async def __call__(self, job: QueuedJob) -> RetentionSweepResult:
+        candidates = await self._repository.list_candidates(job.aggregate_id)
         eligible: list[RetentionCandidate] = []
         protected: list[str] = []
         safe_cleanup_states = {"ARCHIVED", "DELETE_PENDING", "DELETION_PENDING", "DELETED"}
