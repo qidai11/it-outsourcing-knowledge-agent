@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -70,4 +71,13 @@ class RunRepository(Protocol):
         *,
         run_id: UUID,
         status: RunStatus,
+    ) -> RunRecord: ...
+
+    async def set_lifecycle(
+        self,
+        *,
+        run_id: UUID,
+        status: RunStatus,
+        started_at: datetime | None,
+        finished_at: datetime | None,
     ) -> RunRecord: ...

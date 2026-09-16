@@ -62,7 +62,7 @@ class BackgroundWorker:
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(job.job_id))
         try:
             handler = self._handlers.resolve(job.job_type)
-            await handler(job.aggregate_id)
+            await handler(job)
         except Exception as exc:
             await self._queue.fail(job.job_id, self._worker_id, type(exc).__name__)
         else:

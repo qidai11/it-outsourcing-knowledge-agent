@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -163,6 +164,24 @@ class SqlAlchemyRunRepository(RunRepository):
         if row is None:
             raise LookupError(run_id)
         row.status = status.value
+        await self._session.flush()
+        return self._to_run(row)
+
+    async def set_lifecycle(
+        self,
+        *,
+        run_id: UUID,
+        status: RunStatus,
+        started_at: datetime | None,
+        finished_at: datetime | None,
+    ) -> RunRecord:
+        stmt = select(AgentRunModel).where(AgentRunModel.id == run_id).with_for_update()
+        row = (await self._session.scalars(stmt)).one_or_none()
+        if row is None:
+            raise LookupError(run_id)
+        row.status = status.value
+        row.started_at = started_at
+        row.finished_at = finished_at
         await self._session.flush()
         return self._to_run(row)
 

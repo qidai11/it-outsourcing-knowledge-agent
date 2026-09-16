@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from project_agent.application.ports.job_queue import QueuedJob
 from project_agent.workers.concurrency import ParseConcurrencyLimiter
 
-JobHandler = Callable[[str], Awaitable[Any]]
+JobHandler = Callable[[QueuedJob], Awaitable[Any]]
+AggregateIdHandler = Callable[[str], Awaitable[Any]]
 
 INGEST_DOCUMENT = "INGEST_DOCUMENT"
 DELETE_DOCUMENT = "DELETE_DOCUMENT"
@@ -20,6 +22,14 @@ DOCUMENT_INGEST = INGEST_DOCUMENT
 
 class UnknownJobType(LookupError):
     pass
+
+
+class AggregateIdHandlerAdapter:
+    def __init__(self, handler: AggregateIdHandler) -> None:
+        self._handler = handler
+
+    async def __call__(self, job: QueuedJob) -> Any:
+        return await self._handler(job.aggregate_id)
 
 
 class HandlerRegistry:
@@ -41,6 +51,6 @@ class ParseLimitedHandler:
         self._handler = handler
         self._limiter = limiter
 
-    async def __call__(self, aggregate_id: str) -> Any:
+    async def __call__(self, job: QueuedJob) -> Any:
         async with self._limiter.slot():
-            return await self._handler(aggregate_id)
+            return await self._handler(job)

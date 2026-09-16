@@ -58,3 +58,10 @@ def test_staging_rejects_default_jwt_secret() -> None:
 
     with pytest.raises(ValidationError, match="staging requires a non-default JWT secret"):
         Settings(**values)
+
+
+def test_worker_document_jobs_are_disabled_by_default() -> None:
+    settings = Settings(**_settings_kwargs())
+
+    assert settings.worker_ingest_document_enabled is False
+    assert settings.worker_delete_document_enabled is False
