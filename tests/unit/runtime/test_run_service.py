@@ -20,12 +20,16 @@ from project_agent.application.services.authorization import (
 )
 from project_agent.application.services.runs import (
     CreateRunCommand,
+    ResumeInputMismatch,
+    ResumeRunCommand,
     RunAccessDenied,
     RunApplicationService,
     RunNotFound,
+    RunStateConflict,
     ThreadNotFound,
 )
 from project_agent.domain.enums import ProjectRole
+from project_agent.domain.issues import ConfirmationAction
 from project_agent.domain.runs import AgentEventType, RunBusinessMode, RunJobType, RunStatus
 from project_agent.infrastructure.jobs.postgres import SqlAlchemySessionJobEnqueuer
 
@@ -393,3 +397,254 @@ async def test_get_run_denies_member_of_another_project() -> None:
 
     with pytest.raises(AuthorizationDenied):
         await service.get_run(identity=AuthenticatedIdentity(user_id=USER), run_id=run.id)
+
+
+HASH = "a" * 64
+OTHER_HASH = "b" * 64
+
+
+async def seed_resume_run(
+    runs: FakeRunRepository,
+    *,
+    user_id: UUID = USER,
+    business_mode: RunBusinessMode = RunBusinessMode.ISSUE_CREATE,
+    status: RunStatus = RunStatus.WAITING_CONFIRMATION,
+    request_payload_hash: str | None = HASH,
+):
+    thread = await runs.create_thread(
+        company_id=COMPANY,
+        project_id=PROJECT,
+        user_id=user_id,
+    )
+    run = await runs.create_run(
+        thread_id=thread.id,
+        company_id=COMPANY,
+        project_id=PROJECT,
+        user_id=user_id,
+        business_mode=business_mode,
+    )
+    run = await runs.set_status(run_id=run.id, status=status)
+    if request_payload_hash is not None:
+        await runs.append_event(
+            run_id=run.id,
+            event_type=AgentEventType.WAITING_CONFIRMATION,
+            payload={"request_payload_hash": request_payload_hash},
+        )
+    return run
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", [ConfirmationAction.CONFIRM, ConfirmationAction.CANCEL])
+async def test_resume_waiting_run_persists_input_and_enqueues_resume_job(
+    action: ConfirmationAction,
+) -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership()
+    run = await seed_resume_run(runs)
+
+    updated = await service.resume_run(
+        identity=AuthenticatedIdentity(user_id=USER),
+        run_id=run.id,
+        command=ResumeRunCommand(action=action, request_payload_hash=HASH),
+    )
+
+    assert updated.status is RunStatus.QUEUED
+    resume_event = runs.events[run.id][-1]
+    assert resume_event.event_type is AgentEventType.RUN_RESUME_QUEUED
+    assert resume_event.payload == {
+        "action": action.value,
+        "request_payload_hash": HASH,
+        "actor_id": str(USER),
+    }
+    assert len(jobs.jobs) == 1
+    assert jobs.jobs[-1].job_type == RunJobType.RESUME.value
+    assert jobs.jobs[-1].aggregate_id == str(run.id)
+
+
+@pytest.mark.asyncio
+async def test_resume_missing_run_is_not_found_without_side_effects() -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership()
+
+    with pytest.raises(RunNotFound):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=uuid4(),
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=HASH,
+            ),
+        )
+
+    assert runs.events == {}
+    assert jobs.jobs == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("valid_to", [None, NOW])
+async def test_resume_requires_current_project_membership(valid_to: datetime | None) -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    run = await seed_resume_run(runs)
+    if valid_to is not None:
+        auth_repo.memberships[(USER, PROJECT)] = membership(valid_to=valid_to)
+
+    with pytest.raises(AuthorizationDenied):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=run.id,
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=HASH,
+            ),
+        )
+
+    assert runs.runs[run.id].status is RunStatus.WAITING_CONFIRMATION
+    assert [event.event_type for event in runs.events[run.id]] == [
+        AgentEventType.WAITING_CONFIRMATION
+    ]
+    assert jobs.jobs == ()
+
+
+@pytest.mark.asyncio
+async def test_resume_requires_original_run_actor_even_for_project_member() -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(OTHER_USER, PROJECT)] = membership()
+    run = await seed_resume_run(runs, user_id=USER)
+
+    with pytest.raises(RunAccessDenied):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=OTHER_USER),
+            run_id=run.id,
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=HASH,
+            ),
+        )
+
+    assert runs.runs[run.id].status is RunStatus.WAITING_CONFIRMATION
+    assert len(runs.events[run.id]) == 1
+    assert jobs.jobs == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("business_mode", "status"),
+    [
+        (RunBusinessMode.QA, RunStatus.WAITING_CONFIRMATION),
+        (RunBusinessMode.ISSUE_CREATE, RunStatus.QUEUED),
+        (RunBusinessMode.ISSUE_CREATE, RunStatus.RUNNING),
+    ],
+)
+async def test_resume_rejects_incompatible_mode_or_state_without_side_effects(
+    business_mode: RunBusinessMode,
+    status: RunStatus,
+) -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership()
+    run = await seed_resume_run(runs, business_mode=business_mode, status=status)
+    event_count = len(runs.events[run.id])
+
+    with pytest.raises(RunStateConflict):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=run.id,
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=HASH,
+            ),
+        )
+
+    assert runs.runs[run.id].status is status
+    assert len(runs.events[run.id]) == event_count
+    assert jobs.jobs == ()
+
+
+@pytest.mark.asyncio
+async def test_resume_requires_latest_waiting_confirmation_event() -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership()
+    run = await seed_resume_run(runs, request_payload_hash=None)
+
+    with pytest.raises(RunStateConflict):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=run.id,
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=HASH,
+            ),
+        )
+
+    assert runs.events[run.id] == []
+    assert jobs.jobs == ()
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_payload_hash_mismatch_without_side_effects() -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership()
+    run = await seed_resume_run(runs)
+
+    with pytest.raises(ResumeInputMismatch):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=run.id,
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=OTHER_HASH,
+            ),
+        )
+
+    assert runs.runs[run.id].status is RunStatus.WAITING_CONFIRMATION
+    assert len(runs.events[run.id]) == 1
+    assert jobs.jobs == ()
+
+
+@pytest.mark.asyncio
+async def test_resume_replay_is_blocked_after_first_state_transition() -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership()
+    run = await seed_resume_run(runs)
+    command = ResumeRunCommand(
+        action=ConfirmationAction.CONFIRM,
+        request_payload_hash=HASH,
+    )
+
+    await service.resume_run(
+        identity=AuthenticatedIdentity(user_id=USER),
+        run_id=run.id,
+        command=command,
+    )
+    with pytest.raises(RunStateConflict):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=run.id,
+            command=command,
+        )
+
+    assert [event.event_type for event in runs.events[run.id]] == [
+        AgentEventType.WAITING_CONFIRMATION,
+        AgentEventType.RUN_RESUME_QUEUED,
+    ]
+    assert len(jobs.jobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_company_mismatch_in_current_membership() -> None:
+    service, auth_repo, runs, jobs = run_service_fixture()
+    auth_repo.memberships[(USER, PROJECT)] = membership(company_id=OTHER_COMPANY)
+    run = await seed_resume_run(runs)
+
+    with pytest.raises(RunAccessDenied):
+        await service.resume_run(
+            identity=AuthenticatedIdentity(user_id=USER),
+            run_id=run.id,
+            command=ResumeRunCommand(
+                action=ConfirmationAction.CONFIRM,
+                request_payload_hash=HASH,
+            ),
+        )
+
+    assert runs.runs[run.id].status is RunStatus.WAITING_CONFIRMATION
+    assert len(runs.events[run.id]) == 1
+    assert jobs.jobs == ()

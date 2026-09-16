@@ -27,7 +27,13 @@ from project_agent.application.services.authorization import (
 from project_agent.application.services.runs import RunApplicationService
 from project_agent.config import Settings
 from project_agent.domain.enums import ProjectRole
-from project_agent.domain.runs import AgentEventType, RunBusinessMode, RunStatus
+from project_agent.domain.issues import ConfirmationAction
+from project_agent.domain.runs import (
+    AgentEventType,
+    RunBusinessMode,
+    RunJobType,
+    RunStatus,
+)
 from project_agent.infrastructure.auth.jwt import JwtIdentityVerifier
 from project_agent.main import create_app
 from project_agent.runtime.api import ApiRuntime
@@ -458,3 +464,208 @@ def test_run_events_reconnect_after_terminal_cursor_returns_without_replay(tmp_p
 
     assert response.status_code == 200
     assert response.text == ""
+
+
+RESUME_HASH = "a" * 64
+RESUME_OTHER_HASH = "b" * 64
+
+
+async def _seed_resume_api_run(
+    h: RunApiHarness,
+    *,
+    user_id: UUID = USER,
+    status: RunStatus = RunStatus.WAITING_CONFIRMATION,
+    request_payload_hash: str = RESUME_HASH,
+) -> UUID:
+    thread = await h.runs.create_thread(
+        company_id=COMPANY,
+        project_id=PROJECT,
+        user_id=user_id,
+    )
+    run = await h.runs.create_run(
+        thread_id=thread.id,
+        company_id=COMPANY,
+        project_id=PROJECT,
+        user_id=user_id,
+        business_mode=RunBusinessMode.ISSUE_CREATE,
+    )
+    await h.runs.set_status(run_id=run.id, status=status)
+    await h.runs.append_event(
+        run_id=run.id,
+        event_type=AgentEventType.WAITING_CONFIRMATION,
+        payload={"request_payload_hash": request_payload_hash},
+    )
+    return run.id
+
+
+def _resume_payload(
+    *,
+    action: str = ConfirmationAction.CONFIRM.value,
+    request_payload_hash: str = RESUME_HASH,
+) -> dict[str, str]:
+    return {
+        "action": action,
+        "request_payload_hash": request_payload_hash,
+    }
+
+
+def test_resume_run_requires_bearer_authentication(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    run_id = asyncio.run(_seed_resume_api_run(h))
+
+    with TestClient(h.app) as client:
+        missing = client.post(f"/api/v1/runs/{run_id}/resume", json=_resume_payload())
+        invalid = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(),
+            headers={"Authorization": f"Bearer {h.token(secret='x' * 32)}"},
+        )
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
+
+
+def test_resume_run_rejects_non_member_and_forged_claims(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    run_id = asyncio.run(_seed_resume_api_run(h))
+
+    with TestClient(h.app) as client:
+        non_member = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(),
+            headers=h.headers(),
+        )
+        forged = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(),
+            headers=h.headers(role="project_manager", project_ids=[str(PROJECT)]),
+        )
+
+    assert non_member.status_code == 403
+    assert forged.status_code == 403
+    assert h.runs.runs[run_id].status is RunStatus.WAITING_CONFIRMATION
+    assert h.jobs.jobs == ()
+
+
+def test_resume_run_rejects_wrong_authenticated_project_member(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(OTHER_USER, PROJECT)] = _membership()
+    run_id = asyncio.run(_seed_resume_api_run(h, user_id=USER))
+
+    with TestClient(h.app) as client:
+        response = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(),
+            headers=h.headers(user_id=OTHER_USER),
+        )
+
+    assert response.status_code == 403
+    assert h.runs.runs[run_id].status is RunStatus.WAITING_CONFIRMATION
+    assert h.jobs.jobs == ()
+
+
+def test_resume_run_accepts_matching_payload_and_enqueues_resume_job(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+    run_id = asyncio.run(_seed_resume_api_run(h))
+
+    with TestClient(h.app) as client:
+        response = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(),
+            headers=h.headers(),
+        )
+
+    assert response.status_code == 202
+    assert response.json()["run_id"] == str(run_id)
+    assert response.json()["status"] == RunStatus.QUEUED.value
+    assert h.runs.events[run_id][-1].event_type is AgentEventType.RUN_RESUME_QUEUED
+    assert h.jobs.jobs[-1].job_type == RunJobType.RESUME.value
+    assert h.jobs.jobs[-1].aggregate_id == str(run_id)
+
+
+def test_resume_run_maps_hash_and_state_conflicts_to_409(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+    waiting_run_id = asyncio.run(_seed_resume_api_run(h))
+    queued_run_id = asyncio.run(_seed_resume_api_run(h, status=RunStatus.QUEUED))
+
+    with TestClient(h.app) as client:
+        mismatch = client.post(
+            f"/api/v1/runs/{waiting_run_id}/resume",
+            json=_resume_payload(request_payload_hash=RESUME_OTHER_HASH),
+            headers=h.headers(),
+        )
+        non_waiting = client.post(
+            f"/api/v1/runs/{queued_run_id}/resume",
+            json=_resume_payload(),
+            headers=h.headers(),
+        )
+
+    assert mismatch.status_code == 409
+    assert non_waiting.status_code == 409
+    assert h.jobs.jobs == ()
+
+
+def test_resume_run_validates_action_and_payload_hash_format(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+    run_id = asyncio.run(_seed_resume_api_run(h))
+
+    with TestClient(h.app) as client:
+        invalid_action = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(action="approve"),
+            headers=h.headers(),
+        )
+        invalid_hash = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(request_payload_hash="not-a-sha256"),
+            headers=h.headers(),
+        )
+
+    assert invalid_action.status_code == 422
+    assert invalid_hash.status_code == 422
+    assert h.runs.runs[run_id].status is RunStatus.WAITING_CONFIRMATION
+    assert h.jobs.jobs == ()
+
+
+def test_resume_run_replay_returns_409_and_does_not_enqueue_twice(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+    run_id = asyncio.run(_seed_resume_api_run(h))
+
+    with TestClient(h.app) as client:
+        first = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(action=ConfirmationAction.CANCEL.value),
+            headers=h.headers(),
+        )
+        replay = client.post(
+            f"/api/v1/runs/{run_id}/resume",
+            json=_resume_payload(action=ConfirmationAction.CANCEL.value),
+            headers=h.headers(),
+        )
+
+    assert first.status_code == 202
+    assert replay.status_code == 409
+    assert len(h.jobs.jobs) == 1
+    assert [event.event_type for event in h.runs.events[run_id]] == [
+        AgentEventType.WAITING_CONFIRMATION,
+        AgentEventType.RUN_RESUME_QUEUED,
+    ]
+
+
+def test_resume_unknown_run_is_404(tmp_path: Path) -> None:
+    h = RunApiHarness(tmp_path)
+    h.auth_repo.memberships[(USER, PROJECT)] = _membership()
+    unknown_run_id = UUID("77777777-7777-4777-8777-777777777777")
+
+    with TestClient(h.app, raise_server_exceptions=False) as client:
+        response = client.post(
+            f"/api/v1/runs/{unknown_run_id}/resume",
+            json=_resume_payload(),
+            headers=h.headers(),
+        )
+
+    assert response.status_code == 404

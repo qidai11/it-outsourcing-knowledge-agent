@@ -26,11 +26,15 @@ from project_agent.application.services.authorization import (
 )
 from project_agent.application.services.runs import (
     CreateRunCommand,
+    ResumeInputMismatch,
+    ResumeRunCommand,
     RunAccessDenied,
     RunApplicationService,
     RunNotFound,
+    RunStateConflict,
     ThreadNotFound,
 )
+from project_agent.domain.issues import ConfirmationAction
 from project_agent.domain.runs import (
     TERMINAL_EVENT_TYPES,
     TERMINAL_RUN_STATUSES,
@@ -48,6 +52,11 @@ class CreateRunRequest(BaseModel):
     business_mode: RunBusinessMode
     query: str = Field(min_length=1)
     thread_id: UUID | None = None
+
+
+class ResumeRunRequest(BaseModel):
+    action: ConfirmationAction
+    request_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class RunResponse(BaseModel):
@@ -179,6 +188,38 @@ async def create_run(
         raise _forbidden(exc) from exc
     except (RunNotFound, ThreadNotFound) as exc:
         raise _not_found(exc) from exc
+    return _response(run)
+
+
+@router.post(
+    "/{run_id}/resume",
+    response_model=RunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resume_run(
+    run_id: UUID,
+    payload: ResumeRunRequest,
+    identity: Annotated[AuthenticatedIdentity, Depends(get_authenticated_identity)],
+    services: Annotated[RunApiServices, Depends(get_run_api_services)],
+) -> RunResponse:
+    try:
+        run = await services.runs.resume_run(
+            identity=identity,
+            run_id=run_id,
+            command=ResumeRunCommand(
+                action=payload.action,
+                request_payload_hash=payload.request_payload_hash,
+            ),
+        )
+    except (AuthorizationDenied, RunAccessDenied) as exc:
+        raise _forbidden(exc) from exc
+    except RunNotFound as exc:
+        raise _not_found(exc) from exc
+    except (ResumeInputMismatch, RunStateConflict) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     return _response(run)
 
 

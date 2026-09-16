@@ -9,12 +9,20 @@ from project_agent.application.services.authorization import (
     AuthenticatedIdentity,
     AuthorizationService,
 )
+from project_agent.domain.issues import ConfirmationAction
 from project_agent.domain.runs import (
     AgentEventType,
     RunBusinessMode,
     RunJobType,
     RunRecord,
+    RunStatus,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeRunCommand:
+    action: ConfirmationAction
+    request_payload_hash: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +43,14 @@ class ThreadNotFound(LookupError):
 
 class RunAccessDenied(PermissionError):
     """Raised when durable ownership does not match current authorization."""
+
+
+class RunStateConflict(RuntimeError):
+    """Raised when a Run cannot accept the requested state transition."""
+
+
+class ResumeInputMismatch(RunStateConflict):
+    """Raised when resume input does not match the durable interrupt payload."""
 
 
 class RunApplicationService:
@@ -102,6 +118,63 @@ class RunApplicationService:
             )
         )
         return run
+
+    async def resume_run(
+        self,
+        *,
+        identity: AuthenticatedIdentity,
+        run_id: UUID,
+        command: ResumeRunCommand,
+    ) -> RunRecord:
+        run = await self._repository.get_run(run_id, for_update=True)
+        if run is None:
+            raise RunNotFound(f"run {run_id} not found")
+
+        authorized = await self._authorization.authorize_identity(
+            identity=identity,
+            project_id=run.project_id,
+        )
+        if authorized.scope.company_id != run.company_id:
+            raise RunAccessDenied("run company does not match current authorization")
+        if identity.user_id != run.user_id:
+            raise RunAccessDenied("only the original run actor may resume this run")
+        if run.business_mode is not RunBusinessMode.ISSUE_CREATE:
+            raise RunStateConflict("run business mode does not accept confirmation resume")
+        if run.status is not RunStatus.WAITING_CONFIRMATION:
+            raise RunStateConflict("run is not waiting for confirmation")
+
+        waiting = await self._repository.latest_event_of_type(
+            run_id=run.id,
+            event_type=AgentEventType.WAITING_CONFIRMATION,
+        )
+        if waiting is None:
+            raise RunStateConflict("run has no durable waiting confirmation event")
+        expected_hash = waiting.payload.get("request_payload_hash")
+        if not isinstance(expected_hash, str):
+            raise RunStateConflict("waiting confirmation event has no payload hash")
+        if command.request_payload_hash != expected_hash:
+            raise ResumeInputMismatch("resume payload hash does not match waiting confirmation")
+
+        await self._repository.append_event(
+            run_id=run.id,
+            event_type=AgentEventType.RUN_RESUME_QUEUED,
+            payload={
+                "action": command.action.value,
+                "request_payload_hash": command.request_payload_hash,
+                "actor_id": str(identity.user_id),
+            },
+        )
+        updated = await self._repository.set_status(
+            run_id=run.id,
+            status=RunStatus.QUEUED,
+        )
+        await self._jobs.enqueue(
+            EnqueueJobRequest(
+                job_type=RunJobType.RESUME.value,
+                aggregate_id=str(run.id),
+            )
+        )
+        return updated
 
     async def get_run(
         self,
