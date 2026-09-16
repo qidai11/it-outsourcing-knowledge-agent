@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from project_agent.domain.runs import (
@@ -133,6 +134,26 @@ class FakeRunRepository:
         if current is None:
             raise LookupError(run_id)
         updated = replace(current, status=status)
+        self.runs[run_id] = updated
+        return self._with_terminal_result(updated)
+
+    async def set_lifecycle(
+        self,
+        *,
+        run_id: UUID,
+        status: RunStatus,
+        started_at: datetime | None,
+        finished_at: datetime | None,
+    ) -> RunRecord:
+        current = self.runs.get(run_id)
+        if current is None:
+            raise LookupError(run_id)
+        updated = replace(
+            current,
+            status=status,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
         self.runs[run_id] = updated
         return self._with_terminal_result(updated)
 

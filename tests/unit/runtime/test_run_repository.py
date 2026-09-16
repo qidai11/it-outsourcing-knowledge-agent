@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -155,3 +156,29 @@ async def test_sqlalchemy_run_repository_rejects_legacy_run_without_business_mod
 
     with pytest.raises(ValueError, match="has no business_mode"):
         await repository.get_run(run.id)
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_run_repository_sets_lifecycle_without_committing() -> None:
+    session = RepositorySession()
+    run = make_run_model()
+    session.scalar_rows.append(ScalarRows(one=run))
+    repository = SqlAlchemyRunRepository(cast(AsyncSession, session))
+    started = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
+    finished = datetime(2026, 9, 16, 12, 5, tzinfo=UTC)
+
+    updated = await repository.set_lifecycle(
+        run_id=run.id,
+        status=RunStatus.SUCCEEDED,
+        started_at=started,
+        finished_at=finished,
+    )
+
+    assert run.status == RunStatus.SUCCEEDED.value
+    assert run.started_at == started
+    assert run.finished_at == finished
+    assert updated.status is RunStatus.SUCCEEDED
+    assert updated.started_at == started
+    assert updated.finished_at == finished
+    assert session.flush_calls == 1
+    assert session.commit_calls == 0
