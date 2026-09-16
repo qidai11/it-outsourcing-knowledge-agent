@@ -134,9 +134,11 @@ class RunExecutionService:
 
         if outcome.kind is RunGraphOutcomeKind.WAITING_CONFIRMATION:
             waiting_payload = outcome.waiting_payload
-            request_hash = None if waiting_payload is None else waiting_payload.get(
-                "request_payload_hash"
-            )
+            if waiting_payload is None:
+                raise RunExecutionContractError(
+                    "WAITING_CONFIRMATION requires string request_payload_hash"
+                )
+            request_hash = waiting_payload.get("request_payload_hash")
             if not isinstance(request_hash, str):
                 raise RunExecutionContractError(
                     "WAITING_CONFIRMATION requires string request_payload_hash"
