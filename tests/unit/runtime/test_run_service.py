@@ -33,7 +33,6 @@ from project_agent.domain.issues import ConfirmationAction
 from project_agent.domain.runs import AgentEventType, RunBusinessMode, RunJobType, RunStatus
 from project_agent.infrastructure.jobs.postgres import SqlAlchemySessionJobEnqueuer
 
-
 NOW = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)
 COMPANY = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_COMPANY = UUID("22222222-2222-4222-8222-222222222222")
