@@ -8,6 +8,7 @@ from project_agent.agent.nodes.citation_guard import citation_guard_node
 from project_agent.agent.nodes.clarify import clarify_project_node
 from project_agent.agent.nodes.generate_answer import generate_answer_node
 from project_agent.agent.nodes.govern_evidence import govern_evidence_node
+from project_agent.agent.nodes.grade_retrieval import grade_retrieval_node
 from project_agent.agent.nodes.identifier_node import resolve_identifiers_node
 from project_agent.agent.nodes.load_prompt import load_prompt_snapshot_node
 from project_agent.agent.nodes.query_analysis_node import analyze_query_node
@@ -54,7 +55,16 @@ def _after_project_selection(state: AgentState) -> str:
 
 
 def _after_retrieval(state: AgentState) -> str:
-    return "govern_evidence" if state.get("route") == "answer" else "refuse"
+    return "grade_retrieval" if state.get("route") == "grade_retrieval" else "refuse"
+
+
+def _after_retrieval_grade(state: AgentState) -> str:
+    route = state.get("route")
+    if route == "govern_evidence":
+        return "govern_evidence"
+    if route == "retrieve_again":
+        return "retrieve"
+    return "refuse"
 
 
 def _after_governance(state: AgentState) -> str:
@@ -128,6 +138,15 @@ def build_project_qa_graph(
             store=deps.store,
         )
 
+    async def grade_retrieval(state: AgentState) -> AgentState:
+        return await grade_retrieval_node(
+            state,
+            llm=deps.llm,
+            llm_usage=deps.llm_usage,
+            store=deps.store,
+            model_alias=deps.model_alias,
+        )
+
     async def govern(state: AgentState) -> AgentState:
         return await govern_evidence_node(
             state,
@@ -172,6 +191,7 @@ def build_project_qa_graph(
     builder.add_node("resolve_scope", scope)
     builder.add_node("resolve_identifiers", identifiers)
     builder.add_node("retrieve", retrieve)
+    builder.add_node("grade_retrieval", grade_retrieval)
     builder.add_node("govern_evidence", govern)
     builder.add_node("generate_answer", answer)
     builder.add_node("citation_guard", guard_citations)
@@ -197,7 +217,16 @@ def build_project_qa_graph(
         "retrieve",
         _after_retrieval,
         {
+            "grade_retrieval": "grade_retrieval",
+            "refuse": "refuse",
+        },
+    )
+    builder.add_conditional_edges(
+        "grade_retrieval",
+        _after_retrieval_grade,
+        {
             "govern_evidence": "govern_evidence",
+            "retrieve": "retrieve",
             "refuse": "refuse",
         },
     )

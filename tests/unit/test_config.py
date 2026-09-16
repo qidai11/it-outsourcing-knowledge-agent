@@ -31,6 +31,8 @@ def test_settings_load_required_values() -> None:
     assert settings.ragflow_parse_concurrency == 2
     assert settings.prompt_cache_ttl_seconds == 30
     assert settings.retention_sweep_enabled is True
+    assert settings.llm_request_timeout_seconds == 30.0
+    assert settings.llm_max_attempts == 3
 
 
 def test_staging_rejects_in_memory_database() -> None:
@@ -65,3 +67,14 @@ def test_worker_document_jobs_are_disabled_by_default() -> None:
 
     assert settings.worker_ingest_document_enabled is False
     assert settings.worker_delete_document_enabled is False
+
+
+def test_llm_http_settings_accept_overrides() -> None:
+    values = _settings_kwargs()
+    values["llm_request_timeout_seconds"] = 12.5
+    values["llm_max_attempts"] = 5
+
+    settings = Settings(**values)
+
+    assert settings.llm_request_timeout_seconds == 12.5
+    assert settings.llm_max_attempts == 5
