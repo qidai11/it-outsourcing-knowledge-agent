@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from project_agent.agent.checkpoint import async_postgres_saver
@@ -13,6 +14,13 @@ from project_agent.application.ports.run_graph import RunGraphExecutor
 from project_agent.config import Settings
 from project_agent.infrastructure.db.session import create_engine, create_session_factory
 from project_agent.infrastructure.jobs.postgres import PostgresJobQueue
+from project_agent.infrastructure.llm.adapter import (
+    OpenAICompatibleStructuredLLMAdapter,
+    StructuredLLMRetryPolicy,
+)
+from project_agent.infrastructure.ragflow.adapter import RagflowAdapter
+from project_agent.infrastructure.ragflow.client import RagflowRetryPolicy
+from project_agent.runtime.qa import build_production_qa_executor
 from project_agent.workers.handlers import (
     EXECUTE_AGENT_RUN,
     RECONCILE_ISSUE_CREATE,
@@ -46,7 +54,7 @@ class WorkerRuntime:
 async def build_worker_runtime(
     settings: Settings,
     *,
-    graph_executor_factory: GraphExecutorFactory,
+    graph_executor_factory: GraphExecutorFactory | None = None,
     retention_repository: RetentionRepository | None = None,
 ) -> AsyncIterator[WorkerRuntime]:
     _validate_worker_configuration(settings, retention_repository)
@@ -61,8 +69,15 @@ async def build_worker_runtime(
     )
 
     try:
-        async with async_postgres_saver(settings.database_url) as saver:
-            graph_executor = graph_executor_factory(saver)
+        async with (
+            async_postgres_saver(settings.database_url) as saver,
+            _graph_executor_lifetime(
+                settings,
+                session_factory=session_factory,
+                saver=saver,
+                graph_executor_factory=graph_executor_factory,
+            ) as graph_executor,
+        ):
             handlers = _build_handler_registry(
                 settings,
                 session_factory=session_factory,
@@ -95,6 +110,66 @@ async def build_worker_runtime(
                 worker.stop()
     finally:
         await engine.dispose()
+
+
+@asynccontextmanager
+async def _graph_executor_lifetime(
+    settings: Settings,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    saver: object,
+    graph_executor_factory: GraphExecutorFactory | None,
+) -> AsyncIterator[RunGraphExecutor]:
+    if graph_executor_factory is not None:
+        yield graph_executor_factory(saver)
+        return
+    async with _default_qa_executor_lifetime(
+        settings,
+        session_factory=session_factory,
+        saver=saver,
+    ) as graph_executor:
+        yield graph_executor
+
+
+@asynccontextmanager
+async def _default_qa_executor_lifetime(
+    settings: Settings,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    saver: object,
+) -> AsyncIterator[RunGraphExecutor]:
+    async with (
+        httpx.AsyncClient(
+            base_url=settings.ragflow_base_url,
+            timeout=settings.ragflow_request_timeout_seconds,
+        ) as ragflow_http,
+        httpx.AsyncClient(
+            base_url=settings.llm_base_url,
+            timeout=settings.llm_request_timeout_seconds,
+        ) as llm_http,
+    ):
+        knowledge = RagflowAdapter.from_http_client(
+            ragflow_http,
+            api_key=settings.ragflow_api_key.get_secret_value(),
+            object_store=None,
+            embedding_model=settings.ragflow_embedding_model,
+            chunk_method=settings.ragflow_chunk_method,
+            retry_policy=RagflowRetryPolicy(max_attempts=settings.ragflow_max_attempts),
+        )
+        llm = OpenAICompatibleStructuredLLMAdapter(
+            llm_http,
+            api_key=settings.llm_api_key.get_secret_value(),
+            retry_policy=StructuredLLMRetryPolicy(max_attempts=settings.llm_max_attempts),
+            request_timeout_seconds=settings.llm_request_timeout_seconds,
+        )
+        yield build_production_qa_executor(
+            settings=settings,
+            session_factory=session_factory,
+            saver=saver,
+            knowledge=knowledge,
+            llm=llm,
+            llm_usage=llm,
+        )
 
 
 def _validate_worker_configuration(

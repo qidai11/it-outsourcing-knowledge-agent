@@ -390,11 +390,13 @@ async def test_second_round_refinement_keeps_identical_authorization_scope(qa_fi
     assert second.query == "REQ-3.2.1 exact rollback procedure"
     assert second.query != first.query
     assert store.telemetry[run_id].retrieval_rounds == 2
-    assert [call.response_model_name for call in qa_fixture["llm"].calls] == [
+    llm_calls = qa_fixture["llm"].calls
+    assert [call.response_model_name for call in llm_calls[:2]] == [
         "RetrievalGrade",
         "RetrievalGrade",
-        "GroundedAnswerDraft",
     ]
+    assert len(llm_calls) == 3
+    assert llm_calls[2].request.request_id == f"{run_id}:qa-answer:0"
 
 
 @pytest.mark.asyncio

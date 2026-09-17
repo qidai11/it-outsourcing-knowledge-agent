@@ -53,10 +53,11 @@ class DeleteDocumentUseCase:
         if self._commit_barrier is not None:
             await self._commit_barrier.commit()
 
+        project_code = await self._repository.project_code(current.project_id)
         knowledge_space_id = await self._repository.knowledge_space_id(current.project_id)
         await self._knowledge.delete_document(
             DeleteKnowledgeDocumentRequest(
-                project_id=str(current.project_id),
+                project_id=project_code,
                 document_version_id=str(current.version_id),
                 knowledge_space_id=knowledge_space_id,
             )

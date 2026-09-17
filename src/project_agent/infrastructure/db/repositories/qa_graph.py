@@ -75,8 +75,11 @@ class SqlAlchemyQAGraphStore:
         event = AgentEventModel(
             run_id=run_id,
             sequence_no=await self._next_sequence(run_id),
-            event_type=artifact_type,
-            payload_json=payload,
+            event_type=AgentEventType.ARTIFACT_AVAILABLE.value,
+            payload_json={
+                "artifact_type": artifact_type,
+                "artifact": dict(payload),
+            },
         )
         self._session.add(event)
         await self._session.flush()
@@ -86,7 +89,13 @@ class SqlAlchemyQAGraphStore:
         event = await self._session.get(AgentEventModel, artifact_id)
         if event is None:
             raise LookupError(f"graph artifact does not exist: {artifact_id}")
-        return dict(event.payload_json)
+        payload = dict(event.payload_json)
+        if event.event_type == AgentEventType.ARTIFACT_AVAILABLE.value:
+            artifact = payload.get("artifact")
+            if not isinstance(artifact, dict):
+                raise ValueError(f"graph artifact {artifact_id} has invalid event payload")
+            return dict(artifact)
+        return payload
 
     async def record_prompt_snapshot(
         self,

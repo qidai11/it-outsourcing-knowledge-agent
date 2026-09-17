@@ -4,6 +4,7 @@ from datetime import date
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
 from tests.fakes.llm import FakeStructuredLLM
 from tests.fakes.qa_graph_store import InMemoryQAGraphStore
@@ -73,6 +74,48 @@ async def _seed_state():
         "evidence_bundle_id": str(bundle_id),
         "revision_count": 0,
     }
+
+
+@pytest.mark.asyncio
+async def test_answer_generation_requires_at_least_one_evidence_id_per_claim() -> None:
+    store, state = await _seed_state()
+    llm = FakeStructuredLLM()
+    llm.queue_response(
+        {
+            "claims": [{"text": "连续登录失败后会锁定账户。"}],
+            "conflict_disclosure": None,
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        await generate_answer_node(
+            state,
+            llm=llm,
+            llm_usage=llm,
+            store=store,
+            model_alias="fake",
+        )
+
+
+@pytest.mark.asyncio
+async def test_answer_generation_rejects_empty_evidence_ids_per_claim() -> None:
+    store, state = await _seed_state()
+    llm = FakeStructuredLLM()
+    llm.queue_response(
+        {
+            "claims": [{"text": "连续登录失败后会锁定账户。", "evidence_ids": []}],
+            "conflict_disclosure": None,
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        await generate_answer_node(
+            state,
+            llm=llm,
+            llm_usage=llm,
+            store=store,
+            model_alias="fake",
+        )
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@ class InMemoryDocumentWorkflowRepository:
     def __init__(self) -> None:
         self._versions: dict[UUID, DocumentVersionRecord] = {}
         self._knowledge_spaces: dict[UUID, str] = {}
+        self._project_codes: dict[UUID, str] = {}
         self.audits: list[DocumentAuditRecord] = []
 
     async def create_draft(self, draft: CreateDocumentDraft) -> DocumentVersionRecord:
@@ -101,8 +102,14 @@ class InMemoryDocumentWorkflowRepository:
     async def add_audit(self, audit: DocumentAuditRecord) -> None:
         self.audits.append(audit)
 
+    async def project_code(self, project_id: UUID) -> str:
+        return self._project_codes[project_id]
+
     async def knowledge_space_id(self, project_id: UUID) -> str:
         return self._knowledge_spaces[project_id]
+
+    def bind_project_code(self, project_id: UUID, project_code: str) -> None:
+        self._project_codes[project_id] = project_code
 
     def bind_knowledge_space(self, project_id: UUID, knowledge_space_id: str) -> None:
         self._knowledge_spaces[project_id] = knowledge_space_id
