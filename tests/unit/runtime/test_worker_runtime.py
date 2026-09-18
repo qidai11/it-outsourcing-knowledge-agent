@@ -201,3 +201,25 @@ async def test_runtime_closes_worker_checkpointer_and_engine(
     assert runtime.worker._stop.is_set() is True
     assert runtime_dependencies["lifetime"] == {"entered": True, "exited": True}
     assert cast(FakeEngine, runtime_dependencies["engine"]).disposed is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_closes_optional_graph_executor_resource(
+    runtime_dependencies: dict[str, object],
+) -> None:
+    class ClosableExecutor(FakeRunGraphExecutor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    executor = ClosableExecutor()
+    async with build_worker_runtime(
+        settings(),
+        graph_executor_factory=lambda _saver: executor,
+    ):
+        assert executor.closed is False
+
+    assert executor.closed is True

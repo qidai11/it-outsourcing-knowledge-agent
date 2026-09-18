@@ -93,6 +93,9 @@ async def build_worker_runtime(
                 yield runtime
             finally:
                 worker.stop()
+                close = getattr(graph_executor, "aclose", None)
+                if callable(close):
+                    await close()
     finally:
         await engine.dispose()
 

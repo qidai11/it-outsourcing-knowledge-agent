@@ -197,3 +197,15 @@ async def test_success_projects_first_supported_result_reference(
 
     assert outcome.kind is RunGraphOutcomeKind.SUCCEEDED
     assert outcome.result_ref == expected
+
+
+@pytest.mark.asyncio
+async def test_issue_lookup_projects_candidate_artifact_as_success() -> None:
+    run = make_run(business_mode=RunBusinessMode.ISSUE_LOOKUP)
+    graph = RecordingGraph({"issue_candidate_id": "candidate:1", "route": "issue_candidates"})
+    executor = LangGraphRunExecutor({RunBusinessMode.ISSUE_LOOKUP: graph})
+
+    outcome = await executor.execute(run)
+
+    assert outcome.kind is RunGraphOutcomeKind.SUCCEEDED
+    assert outcome.result_ref == "candidate:1"
