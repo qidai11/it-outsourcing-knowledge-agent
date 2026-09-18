@@ -55,6 +55,7 @@ class IssueConfirmationService:
             module=request.module,
             error_code=request.error_code,
             environment=request.environment,
+            evidence_ids=draft.evidence_ids,
             possible_duplicates=await self._repository.list_candidate_links(draft.id),
         )
 

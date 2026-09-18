@@ -34,6 +34,7 @@ class IssueDraftService:
         created_by: UUID,
         text: str,
         candidates: IssueCandidateResult | None = None,
+        evidence_ids: tuple[str, ...] = (),
     ) -> IssueDraft:
         clean = text.strip()
         if not clean:
@@ -56,6 +57,7 @@ class IssueDraftService:
                 issue_type=IssueType.BUG.value if has_error_code else IssueType.TASK.value,
                 proposed_priority=IssuePriority.MEDIUM.value,
                 module=module,
+                evidence_ids=evidence_ids,
             )
         )
         if candidates is not None:

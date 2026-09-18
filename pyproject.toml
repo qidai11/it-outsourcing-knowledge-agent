@@ -35,6 +35,7 @@ packages = ["src/project_agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "-ra"
 asyncio_mode = "auto"
 

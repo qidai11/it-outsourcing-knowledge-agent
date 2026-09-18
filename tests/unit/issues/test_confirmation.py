@@ -11,7 +11,11 @@ from project_agent.application.services.issue_confirmation import (
     IssueConfirmationService,
 )
 from project_agent.application.services.issue_drafts import IssueDraftService
-from project_agent.domain.issues import ConfirmationAction, ToolConfirmationStatus
+from project_agent.domain.issues import (
+    ConfirmationAction,
+    IssueDraftCreate,
+    ToolConfirmationStatus,
+)
 
 
 @pytest.mark.asyncio
@@ -56,3 +60,32 @@ async def test_confirmation_rejects_stale_or_tampered_payload_hash() -> None:
         )
 
     assert repo.confirmations == {}
+
+
+@pytest.mark.asyncio
+async def test_confirmation_exposes_frozen_evidence_without_changing_provider_payload_hash(
+) -> None:
+    now = datetime(2026, 9, 18, 8, 0, tzinfo=UTC)
+    repo = FakeIssueWorkflowRepository(clock=lambda: now)
+    drafts = IssueDraftService(repo)
+    evidence_ids = (str(uuid4()), str(uuid4()))
+    draft = await repo.create_draft(
+        IssueDraftCreate(
+            run_id=uuid4(),
+            project_id=uuid4(),
+            created_by=uuid4(),
+            title="ERR-IMPORT-004 failed",
+            description="ERR-IMPORT-004 failed",
+            issue_type="bug",
+            proposed_priority="medium",
+            evidence_ids=evidence_ids,
+        )
+    )
+    service = IssueConfirmationService(repo, drafts=drafts, clock=lambda: now)
+
+    create_request = drafts.build_create_request(draft)
+    request = await service.prepare(draft.id)
+
+    assert request.evidence_ids == evidence_ids
+    assert request.request_payload_hash == drafts.payload_hash(create_request)
+    assert not hasattr(create_request, "evidence_ids")

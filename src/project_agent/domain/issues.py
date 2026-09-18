@@ -94,6 +94,7 @@ class ConfirmationRequest(BaseModel):
     module: str | None = None
     error_code: str | None = None
     environment: str | None = None
+    evidence_ids: tuple[str, ...] = ()
     possible_duplicates: tuple[IssueCandidateLink, ...] = ()
 
 
