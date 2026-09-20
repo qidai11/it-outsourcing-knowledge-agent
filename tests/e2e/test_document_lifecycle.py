@@ -134,6 +134,7 @@ async def test_owner_approves_and_only_authorized_actor_publishes() -> None:
     uploader_id = uuid4()
     publisher_id = uuid4()
     project_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
 
     draft = await UploadDocumentUseCase(repository, object_store).execute(
@@ -190,6 +191,7 @@ async def test_failed_new_version_publish_keeps_old_version_published() -> None:
     project_id = uuid4()
     owner_id = uuid4()
     publisher_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
 
     old = repository.seed_version(
@@ -242,6 +244,7 @@ async def test_successful_new_version_publish_supersedes_old_only_after_ingestio
     project_id = uuid4()
     owner_id = uuid4()
     publisher_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
 
     old = repository.seed_version(
@@ -289,6 +292,7 @@ async def test_delete_pending_precedes_provider_cleanup_and_survives_cleanup_fai
     knowledge = FakeKnowledgePort()
     project_id = uuid4()
     owner_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
     version = repository.seed_version(
         company_id=uuid4(),
@@ -323,6 +327,7 @@ async def test_pending_publication_can_finalize_without_reingesting() -> None:
     project_id = uuid4()
     owner_id = uuid4()
     publisher = actor(uuid4(), permissions={"publish_document"})
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
 
     draft = await UploadDocumentUseCase(repository, object_store).execute(
@@ -375,6 +380,7 @@ async def test_delete_commit_barrier_precedes_provider_cleanup_failure() -> None
     repository = InMemoryDocumentWorkflowRepository()
     commit_spy = CommitSpy()
     project_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
     version = repository.seed_version(
         company_id=uuid4(),
@@ -415,6 +421,7 @@ async def test_publish_failure_commits_submission_and_failure_audits() -> None:
     commit_spy = CommitSpy()
     project_id = uuid4()
     owner_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-TEST")
     repository.bind_knowledge_space(project_id, "ks-alpha")
 
     draft = await UploadDocumentUseCase(repository, object_store).execute(
@@ -460,3 +467,51 @@ async def test_publish_failure_commits_submission_and_failure_audits() -> None:
         "document_publication_submitted",
         "document_publication_failed",
     ]
+
+
+@pytest.mark.asyncio
+async def test_publish_and_delete_use_canonical_project_code_for_provider_scope() -> None:
+    repository = InMemoryDocumentWorkflowRepository()
+    object_store = InMemoryObjectStore()
+    knowledge = FakeKnowledgePort()
+    project_id = uuid4()
+    owner_id = uuid4()
+    repository.bind_project_code(project_id, "PRJ-RETAIL-ALPHA")
+    repository.bind_knowledge_space(project_id, "ks-alpha")
+
+    draft = await UploadDocumentUseCase(repository, object_store).execute(
+        UploadDocumentCommand(
+            company_id=uuid4(),
+            project_id=project_id,
+            document_category="approved_design",
+            title="Canonical Scope Design",
+            version_label="v1.0",
+            authority_level="approved_design",
+            filename="canonical.md",
+            data=b"canonical",
+            mime_type="text/markdown",
+            owner_user_id=owner_id,
+            actor=actor(uuid4()),
+        )
+    )
+    await SubmitDocumentReviewUseCase(repository).execute(draft.version_id, actor(draft.created_by))
+    await ApproveDocumentUseCase(repository).execute(draft.version_id, actor(owner_id))
+
+    published = await PublishDocumentUseCase(repository, knowledge).execute(
+        draft.version_id,
+        actor(uuid4(), permissions={"publish_document"}),
+    )
+
+    ingestion = knowledge.ingested_requests[-1]
+    assert ingestion.project_id == "PRJ-RETAIL-ALPHA"
+    assert ingestion.project_id != str(project_id)
+    assert ingestion.knowledge_space_id == "ks-alpha"
+
+    await DeleteDocumentUseCase(repository, knowledge).execute(
+        published.version_id,
+        actor(uuid4(), permissions={"archive_document"}),
+    )
+    deletion = knowledge.deleted_requests[-1]
+    assert deletion.project_id == "PRJ-RETAIL-ALPHA"
+    assert deletion.project_id != str(project_id)
+    assert deletion.knowledge_space_id == "ks-alpha"

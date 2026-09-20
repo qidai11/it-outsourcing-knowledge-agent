@@ -376,10 +376,18 @@ async def test_live_issue_lookup_run_is_authorized_and_read_only(tmp_path: Path)
             AgentEventType.RUN_SUCCEEDED.value,
         ]
         candidate_events = [
-            event for event in events if event.event_type == "ISSUE_CANDIDATES"
+            event
+            for event in events
+            if (
+                event.event_type == AgentEventType.ARTIFACT_AVAILABLE.value
+                and event.payload_json.get("artifact_type") == "ISSUE_CANDIDATES"
+            )
         ]
         assert len(candidate_events) == 1
-        candidates = candidate_events[0].payload_json["possible_duplicates"]
+        candidate_event = candidate_events[0]
+        assert run.result_ref == str(candidate_event.id)
+        artifact = candidate_event.payload_json["artifact"]
+        candidates = artifact["possible_duplicates"]
         assert candidates
         assert candidates[0]["issue_key"] == f"EXIST-{scope.existing_issue_id.hex[:8]}"
         assert before == (0, 0, 1)

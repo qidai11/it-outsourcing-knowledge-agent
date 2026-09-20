@@ -36,7 +36,7 @@ async def resolve_identifiers_node(
         identifier_resolutions=resolution.resolutions,
         constrained_document_version_ids=resolution.constrained_document_version_ids,
         allowed_categories=tuple(context.scope.allowed_document_categories),
-        allow_second_round=False,
+        allow_second_round=True,
     )
     artifact_id = await store.save_artifact(
         run_id=run_id,

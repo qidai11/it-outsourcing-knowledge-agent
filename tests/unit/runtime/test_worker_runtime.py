@@ -223,3 +223,98 @@ async def test_runtime_closes_optional_graph_executor_resource(
         assert executor.closed is False
 
     assert executor.closed is True
+
+async def test_injected_graph_factory_bypasses_default_provider_clients(
+    runtime_dependencies: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import project_agent.runtime.worker as module
+
+    called = False
+
+    @asynccontextmanager
+    async def forbidden_default(*args, **kwargs):  # type: ignore[no-untyped-def]
+        del args, kwargs
+        nonlocal called
+        called = True
+        raise AssertionError("default provider composition must not run for injected factory")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(module, "_default_qa_executor_lifetime", forbidden_default, raising=False)
+
+    async with build_worker_runtime(
+        settings(),
+        graph_executor_factory=lambda _saver: FakeRunGraphExecutor(),
+    ) as runtime:
+        assert runtime.handlers.resolve(EXECUTE_AGENT_RUN)
+
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_default_worker_runtime_owns_provider_clients_and_preserves_ws3_handlers(
+    runtime_dependencies: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import project_agent.runtime.worker as module
+    from project_agent.workers.run_execution import ExecuteAgentRunHandler, ResumeAgentRunHandler
+
+    created: list[dict[str, object]] = []
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+            self.closed = False
+            created.append({"client": self, **kwargs})
+
+        async def __aenter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+            del exc_type, exc, tb
+            self.closed = True
+
+    class FakeRagflowAdapter:
+        @classmethod
+        def from_http_client(cls, http, **kwargs):  # type: ignore[no-untyped-def]
+            return ("ragflow", http, kwargs)
+
+    class FakeLLMAdapter:
+        def __init__(self, http, **kwargs):  # type: ignore[no-untyped-def]
+            self.http = http
+            self.kwargs = kwargs
+
+    seen_builder: list[dict[str, object]] = []
+
+    def fake_builder(**kwargs: object) -> FakeRunGraphExecutor:
+        seen_builder.append(kwargs)
+        return FakeRunGraphExecutor()
+
+    monkeypatch.setattr(module.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(module, "RagflowAdapter", FakeRagflowAdapter)
+    monkeypatch.setattr(module, "OpenAICompatibleStructuredLLMAdapter", FakeLLMAdapter)
+    monkeypatch.setattr(module, "build_production_qa_executor", fake_builder)
+
+    configured = settings(
+        ragflow_request_timeout_seconds=12.5,
+        ragflow_max_attempts=4,
+        llm_request_timeout_seconds=7.5,
+        llm_max_attempts=2,
+    )
+    async with build_worker_runtime(configured) as runtime:
+        execute = runtime.handlers.resolve(EXECUTE_AGENT_RUN)
+        resume = runtime.handlers.resolve(RESUME_AGENT_RUN)
+        assert isinstance(execute, ExecuteAgentRunHandler)
+        assert isinstance(resume, ResumeAgentRunHandler)
+        assert len(created) == 2
+        assert created[0]["base_url"] == configured.ragflow_base_url
+        assert created[0]["timeout"] == 12.5
+        assert created[1]["base_url"] == configured.llm_base_url
+        assert created[1]["timeout"] == 7.5
+        assert len(seen_builder) == 1
+        assert seen_builder[0]["session_factory"] is runtime_dependencies["session_factory"]
+        assert seen_builder[0]["saver"] is runtime_dependencies["saver"]
+        assert seen_builder[0]["llm"] is seen_builder[0]["llm_usage"]
+        assert all(not entry["client"].closed for entry in created)  # type: ignore[union-attr]
+
+    assert all(entry["client"].closed for entry in created)  # type: ignore[union-attr]

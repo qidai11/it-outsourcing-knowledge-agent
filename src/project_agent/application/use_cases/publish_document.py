@@ -48,10 +48,11 @@ class PublishDocumentUseCase:
         if current.lifecycle_status is not DocumentLifecycleStatus.APPROVED:
             raise ValueError("only APPROVED documents can be published")
 
+        project_code = await self._repository.project_code(current.project_id)
         knowledge_space_id = await self._repository.knowledge_space_id(current.project_id)
         receipt = await self._knowledge.ingest(
             KnowledgeIngestionRequest(
-                project_id=str(current.project_id),
+                project_id=project_code,
                 knowledge_space_id=knowledge_space_id,
                 document_version_id=str(current.version_id),
                 object_key=current.source_uri,

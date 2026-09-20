@@ -87,6 +87,8 @@ class ApiHarness:
         self.settings = _settings(tmp_path)
         self.auth_repo = FakeProjectAuthorizationRepository()
         self.documents = InMemoryDocumentWorkflowRepository()
+        self.documents.bind_project_code(PROJECT_ALPHA, "PRJ-ALPHA")
+        self.documents.bind_project_code(PROJECT_BETA, "PRJ-BETA")
         self.object_store = InMemoryObjectStore()
         self.knowledge = FakeKnowledgePort()
         self.access = DocumentAccessService(

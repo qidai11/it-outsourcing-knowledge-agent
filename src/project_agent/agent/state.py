@@ -20,6 +20,8 @@ class AgentState(TypedDict, total=False):
     project_selection_id: str | None
     access_scope_id: str | None
     retrieval_plan_id: str | None
+    retrieval_grade_id: str | None
+    retrieval_round: int
     evidence_bundle_id: str | None
     answer_draft_id: str | None
     citation_guard_id: str | None

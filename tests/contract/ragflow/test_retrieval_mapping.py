@@ -19,9 +19,16 @@ async def test_retrieve_filters_cross_project_and_unmapped_chunks() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "GET" and request.url.path == "/api/v1/datasets":
-            name = request.url.params.get("name")
-            dataset_id = "dataset-alpha" if name == "client-a-project-alpha" else "dataset-beta"
-            return httpx.Response(200, json={"code": 0, "data": [{"id": dataset_id, "name": name}]})
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": [
+                        {"id": "dataset-alpha", "name": "client-a-project-alpha"},
+                        {"id": "dataset-beta", "name": "client-b-project-beta"},
+                    ],
+                },
+            )
 
         if request.method == "POST" and request.url.path == "/api/v1/retrieval":
             seen_retrieval_payload.update(json.loads(request.content))
@@ -134,8 +141,15 @@ async def test_retrieve_filters_cross_project_and_unmapped_chunks() -> None:
 @pytest.mark.asyncio
 async def test_retrieve_rejects_knowledge_space_bound_to_another_project() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        name = request.url.params.get("name")
-        return httpx.Response(200, json={"code": 0, "data": [{"id": "dataset-beta", "name": name}]})
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/datasets"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": [{"id": "dataset-beta", "name": "client-b-project-beta"}],
+            },
+        )
 
     async with httpx.AsyncClient(
         base_url="http://ragflow.local",
@@ -152,5 +166,49 @@ async def test_retrieve_rejects_knowledge_space_bound_to_another_project() -> No
                     project_id="PRJ-RETAIL-ALPHA",
                     query="anything",
                     knowledge_space_ids=("dataset-beta",),
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_authorized_binding_seeds_worker_retrieval_scope_without_auto_binding() -> None:
+    seen_payload: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/api/v1/retrieval":
+            seen_payload.update(json.loads(request.content))
+            return httpx.Response(200, json={"code": 0, "data": {"chunks": []}})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    async with httpx.AsyncClient(
+        base_url="http://ragflow.local",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        adapter = RagflowAdapter.from_http_client(http, api_key="secret")
+        adapter.bind_authorized_space(
+            project_id="PRJ-RETAIL-ALPHA",
+            dataset_id="dataset-a",
+        )
+        await adapter.retrieve(
+            KnowledgeRetrievalRequest(
+                project_id="PRJ-RETAIL-ALPHA",
+                query="alpha",
+                knowledge_space_ids=("dataset-a",),
+            )
+        )
+        assert seen_payload["dataset_ids"] == ["dataset-a"]
+
+        with pytest.raises(RagflowProjectIsolationError):
+            adapter.bind_authorized_space(
+                project_id="PRJ-LOGISTICS-BETA",
+                dataset_id="dataset-a",
+            )
+
+        with pytest.raises(RagflowProjectIsolationError):
+            await adapter.retrieve(
+                KnowledgeRetrievalRequest(
+                    project_id="PRJ-RETAIL-ALPHA",
+                    query="unbound",
+                    knowledge_space_ids=("dataset-unbound",),
                 )
             )

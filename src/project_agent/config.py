@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     llm_base_url: str
     llm_api_key: SecretStr
     llm_model_alias: str
+    llm_request_timeout_seconds: float = 30.0
+    llm_max_attempts: int = 3
     sandbox_tracker_enabled: bool = True
     ragflow_parse_concurrency: int = 2
     ragflow_embedding_model: str | None = None

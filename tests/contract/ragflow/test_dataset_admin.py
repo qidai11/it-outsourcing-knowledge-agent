@@ -84,3 +84,45 @@ async def test_ensure_space_creates_missing_dataset() -> None:
 
     assert space.knowledge_space_id == "dataset-public"
     assert methods == ["GET", "POST"]
+
+
+@pytest.mark.asyncio
+async def test_ensure_space_lists_visible_datasets_without_name_filter_and_paginates() -> None:
+    requests: list[httpx.Request] = []
+    first_page = [
+        {"id": f"dataset-{index}", "name": f"other-{index}"}
+        for index in range(100)
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/datasets"
+        assert "name" not in request.url.params
+        assert request.url.params["page_size"] == "100"
+        page = int(request.url.params["page"] or "0")
+        if page == 1:
+            return httpx.Response(200, json={"code": 0, "data": first_page})
+        assert page == 2
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": [{"id": "dataset-target", "name": "client-a-project-alpha"}],
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://ragflow.local",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        adapter = RagflowAdapter.from_http_client(http, api_key="secret")
+        space = await adapter.ensure_space(
+            EnsureKnowledgeSpaceRequest(
+                project_id="PRJ-RETAIL-ALPHA",
+                space_key="client-a-project-alpha",
+            )
+        )
+
+    assert space.knowledge_space_id == "dataset-target"
+    assert [request.url.params["page"] for request in requests] == ["1", "2"]

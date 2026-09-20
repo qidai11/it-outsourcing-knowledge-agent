@@ -18,6 +18,7 @@ from project_agent.infrastructure.db.models.schema import (
     DocumentModel,
     DocumentVersionModel,
     ProjectKnowledgeSpaceModel,
+    ProjectModel,
 )
 
 
@@ -141,6 +142,13 @@ class SqlAlchemyDocumentWorkflowRepository:
             )
         )
         await self._session.flush()
+
+    async def project_code(self, project_id: UUID) -> str:
+        stmt = select(ProjectModel.code).where(ProjectModel.id == project_id)
+        value = (await self._session.execute(stmt)).scalar_one_or_none()
+        if value is None:
+            raise LookupError(f"project {project_id} does not exist")
+        return str(value)
 
     async def knowledge_space_id(self, project_id: UUID) -> str:
         stmt = select(ProjectKnowledgeSpaceModel.external_space_id).where(
