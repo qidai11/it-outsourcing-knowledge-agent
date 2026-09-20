@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging as stdlib_logging
-import sys
 import time
 from typing import cast
 
@@ -35,7 +34,7 @@ def configure_structured_logging(*, log_level: str) -> None:
             sanitize_event_dict,
             structlog.processors.JSONRenderer(),
         ],
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        logger_factory=structlog.PrintLoggerFactory(),
         wrapper_class=structlog.make_filtering_bound_logger(minimum_level),
         cache_logger_on_first_use=False,
     )

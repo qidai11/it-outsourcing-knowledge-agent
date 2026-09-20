@@ -1,5 +1,7 @@
 import asyncio
+import io
 import json
+from contextlib import redirect_stdout
 
 import pytest
 
@@ -77,3 +79,18 @@ def test_configure_structured_logging_can_be_called_repeatedly(
     lines = [line for line in capsys.readouterr().out.splitlines() if line]
     assert len(lines) == 1
     assert json.loads(lines[0])["event"] == "configured_twice"
+
+
+def test_configure_structured_logging_does_not_capture_transient_stdout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    transient_stdout = io.StringIO()
+    with redirect_stdout(transient_stdout):
+        configure_structured_logging(log_level="INFO")
+    transient_stdout.close()
+
+    clear_log_context()
+    get_logger().info("after_transient_stdout")
+
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["event"] == "after_transient_stdout"

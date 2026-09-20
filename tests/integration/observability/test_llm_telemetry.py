@@ -68,6 +68,8 @@ async def test_real_structured_llm_records_usage_when_live_enabled() -> None:
     base_url = os.environ["LLM_BASE_URL"].rstrip("/") + "/"
     api_key = os.environ["LLM_API_KEY"]
     model_alias = os.environ["LLM_MODEL_ALIAS"]
+    timeout = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30"))
+    max_attempts = int(os.getenv("LLM_MAX_ATTEMPTS", "3"))
     request = StructuredLLMRequest(
         request_id=f"ws6-live-{uuid4()}",
         model_alias=model_alias,
@@ -75,12 +77,12 @@ async def test_real_structured_llm_records_usage_when_live_enabled() -> None:
         user_prompt="Return answer ok.",
     )
     metrics = ObservabilityMetrics()
-    async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as http:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as http:
         adapter = OpenAICompatibleStructuredLLMAdapter(
             http,
             api_key=api_key,
-            retry_policy=StructuredLLMRetryPolicy(max_attempts=1),
-            request_timeout_seconds=30.0,
+            retry_policy=StructuredLLMRetryPolicy(max_attempts=max_attempts),
+            request_timeout_seconds=timeout,
         )
         observed = ObservedStructuredLLM(adapter, adapter)
         with metrics_context(metrics):
