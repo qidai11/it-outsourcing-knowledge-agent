@@ -20,6 +20,13 @@ from project_agent.infrastructure.llm.adapter import (
 )
 from project_agent.infrastructure.ragflow.adapter import RagflowAdapter
 from project_agent.infrastructure.ragflow.client import RagflowRetryPolicy
+from project_agent.observability.cost import TokenCostPolicy
+from project_agent.observability.logging import configure_structured_logging
+from project_agent.observability.metrics import (
+    MetricsHttpServerHandle,
+    ObservabilityMetrics,
+    start_metrics_http_server,
+)
 from project_agent.runtime.qa import build_production_qa_executor
 from project_agent.workers.handlers import (
     EXECUTE_AGENT_RUN,
@@ -48,6 +55,8 @@ class WorkerRuntime:
     queue: PostgresJobQueue
     handlers: HandlerRegistry
     worker: BackgroundWorker
+    metrics: ObservabilityMetrics
+    metrics_server: MetricsHttpServerHandle | None
 
 
 @asynccontextmanager
@@ -58,7 +67,13 @@ async def build_worker_runtime(
     retention_repository: RetentionRepository | None = None,
 ) -> AsyncIterator[WorkerRuntime]:
     _validate_worker_configuration(settings, retention_repository)
-
+    configure_structured_logging(log_level=settings.log_level)
+    metrics = ObservabilityMetrics()
+    cost_policy = TokenCostPolicy(
+        settings.llm_input_cost_microunits_per_million_tokens,
+        settings.llm_output_cost_microunits_per_million_tokens,
+        settings.cost_currency,
+    )
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
     queue = PostgresJobQueue(
@@ -66,6 +81,17 @@ async def build_worker_runtime(
         lease_seconds=settings.worker_lease_seconds,
         retry_base_seconds=settings.worker_retry_base_seconds,
         retry_max_seconds=settings.worker_retry_max_seconds,
+        metrics=metrics,
+    )
+
+    metrics_server = (
+        start_metrics_http_server(
+            metrics=metrics,
+            host=settings.worker_metrics_host,
+            port=settings.worker_metrics_port,
+        )
+        if settings.worker_metrics_enabled
+        else None
     )
 
     try:
@@ -95,6 +121,8 @@ async def build_worker_runtime(
                     heartbeat_seconds=settings.worker_heartbeat_seconds,
                     poll_seconds=settings.worker_poll_seconds,
                 ),
+                metrics=metrics,
+                cost_policy=cost_policy,
             )
             runtime = WorkerRuntime(
                 settings=settings,
@@ -103,6 +131,8 @@ async def build_worker_runtime(
                 queue=queue,
                 handlers=handlers,
                 worker=worker,
+                metrics=metrics,
+                metrics_server=metrics_server,
             )
             try:
                 yield runtime
@@ -112,6 +142,8 @@ async def build_worker_runtime(
                 if callable(close):
                     await close()
     finally:
+        if metrics_server is not None:
+            metrics_server.close()
         await engine.dispose()
 
 

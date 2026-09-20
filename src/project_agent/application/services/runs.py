@@ -17,6 +17,8 @@ from project_agent.domain.runs import (
     RunRecord,
     RunStatus,
 )
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +99,7 @@ class RunApplicationService:
                 or thread.company_id != company_id
                 or thread.user_id != identity.user_id
             ):
+                _observe_run_denial("scope_mismatch")
                 raise RunAccessDenied("thread does not belong to the authorized actor scope")
 
         run = await self._repository.create_run(
@@ -135,8 +138,10 @@ class RunApplicationService:
             project_id=run.project_id,
         )
         if authorized.scope.company_id != run.company_id:
+            _observe_run_denial("scope_mismatch")
             raise RunAccessDenied("run company does not match current authorization")
         if identity.user_id != run.user_id:
+            _observe_run_denial("actor_mismatch")
             raise RunAccessDenied("only the original run actor may resume this run")
         if run.business_mode is not RunBusinessMode.ISSUE_CREATE:
             raise RunStateConflict("run business mode does not accept confirmation resume")
@@ -191,5 +196,16 @@ class RunApplicationService:
             project_id=run.project_id,
         )
         if authorized.scope.company_id != run.company_id:
+            _observe_run_denial("scope_mismatch")
             raise RunAccessDenied("run company does not match current authorization")
         return run
+
+
+def _observe_run_denial(reason: str) -> None:
+    metrics = current_metrics()
+    if metrics is not None:
+        if reason == "scope_mismatch":
+            metrics.observe_authorization_denial(reason="scope_mismatch")
+        elif reason == "actor_mismatch":
+            metrics.observe_authorization_denial(reason="actor_mismatch")
+    get_logger().info("authorization_denied", reason=reason)

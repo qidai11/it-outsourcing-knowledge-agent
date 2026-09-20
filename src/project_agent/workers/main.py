@@ -5,7 +5,10 @@ import contextlib
 from dataclasses import dataclass
 
 from project_agent.application.ports.job_queue import JobQueuePort, QueuedJob
-from project_agent.workers.handlers import HandlerRegistry
+from project_agent.observability.cost import TokenCostPolicy, cost_policy_context
+from project_agent.observability.logging import bind_log_context, clear_log_context, get_logger
+from project_agent.observability.metrics import ObservabilityMetrics, metrics_context
+from project_agent.workers.handlers import EXECUTE_AGENT_RUN, RESUME_AGENT_RUN, HandlerRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +27,8 @@ class BackgroundWorker:
         *,
         worker_id: str,
         settings: WorkerSettings | None = None,
+        metrics: ObservabilityMetrics | None = None,
+        cost_policy: TokenCostPolicy | None = None,
     ) -> None:
         settings = settings or WorkerSettings()
         if settings.concurrency < 1:
@@ -34,6 +39,8 @@ class BackgroundWorker:
         self._handlers = handlers
         self._worker_id = worker_id
         self._settings = settings
+        self._metrics = metrics
+        self._cost_policy = cost_policy or TokenCostPolicy.unconfigured()
         self._stop = asyncio.Event()
 
     async def run_once(self) -> int:
@@ -59,7 +66,32 @@ class BackgroundWorker:
         self._stop.set()
 
     async def _process(self, job: QueuedJob) -> None:
+        clear_log_context()
+        context: dict[str, object] = {
+            "service": "worker",
+            "job_id": job.job_id,
+            "job_type": job.job_type,
+            "attempt_count": job.attempts,
+        }
+        if job.job_type in {EXECUTE_AGENT_RUN, RESUME_AGENT_RUN}:
+            context["run_id"] = job.aggregate_id
+        bind_log_context(**context)
+        get_logger().info("job_claimed")
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(job.job_id))
+        try:
+            with cost_policy_context(self._cost_policy):
+                if self._metrics is None:
+                    await self._invoke_handler(job)
+                else:
+                    with metrics_context(self._metrics):
+                        await self._invoke_handler(job)
+        finally:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
+            clear_log_context()
+
+    async def _invoke_handler(self, job: QueuedJob) -> None:
         try:
             handler = self._handlers.resolve(job.job_type)
             await handler(job)
@@ -67,10 +99,7 @@ class BackgroundWorker:
             await self._queue.fail(job.job_id, self._worker_id, type(exc).__name__)
         else:
             await self._queue.complete(job.job_id, self._worker_id)
-        finally:
-            heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await heartbeat_task
+            get_logger().info("job_completed", outcome="succeeded")
 
     async def _heartbeat_loop(self, job_id: str) -> None:
         while True:

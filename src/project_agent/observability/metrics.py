@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import socketserver
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeVar
 
 from prometheus_client import (
     CollectorRegistry,
@@ -15,6 +16,16 @@ from prometheus_client import (
     generate_latest,
     start_http_server,
 )
+from pydantic import BaseModel
+
+from project_agent.application.ports.llm import (
+    LLMTokenUsage,
+    StructuredLLMPort,
+    StructuredLLMRequest,
+    StructuredLLMUsagePort,
+)
+from project_agent.observability.logging import get_logger
+from project_agent.observability.sanitization import safe_error_fields
 
 QueueFailureOutcome = Literal["retry", "failed"]
 ProviderOutcome = Literal["success", "error"]
@@ -295,3 +306,88 @@ def start_metrics_http_server(
 ) -> MetricsHttpServerHandle:
     server, thread = start_http_server(port, addr=host, registry=metrics.registry)
     return MetricsHttpServerHandle(server=server, thread=thread)
+
+
+TStructured = TypeVar("TStructured", bound=BaseModel)
+
+
+class ObservedStructuredLLM(StructuredLLMPort, StructuredLLMUsagePort):
+    """Observe the frozen structured-LLM ports without changing provider behavior."""
+
+    def __init__(self, llm: StructuredLLMPort, usage: StructuredLLMUsagePort) -> None:
+        self._llm = llm
+        self._usage = usage
+        self._pending: dict[str, tuple[str, int]] = {}
+
+    async def generate(
+        self,
+        request: StructuredLLMRequest,
+        response_model: type[TStructured],
+    ) -> TStructured:
+        start_ns = time.perf_counter_ns()
+        self._pending[request.request_id] = (request.model_alias, start_ns)
+        try:
+            return await self._llm.generate(request, response_model)
+        except BaseException as exc:
+            self._pending.pop(request.request_id, None)
+            self._record_failure(request.model_alias, start_ns, exc)
+            raise
+
+    async def get_usage(self, request_id: str) -> LLMTokenUsage:
+        pending = self._pending.get(request_id)
+        try:
+            usage = await self._usage.get_usage(request_id)
+        except BaseException as exc:
+            if pending is not None:
+                self._pending.pop(request_id, None)
+                self._record_failure(pending[0], pending[1], exc)
+            raise
+
+        if pending is not None:
+            self._pending.pop(request_id, None)
+            model_alias, start_ns = pending
+            duration_seconds = max(0.0, (time.perf_counter_ns() - start_ns) / 1_000_000_000)
+            metrics = current_metrics()
+            if metrics is not None:
+                metrics.observe_llm_request(
+                    model_alias=model_alias,
+                    outcome="success",
+                    duration_seconds=duration_seconds,
+                )
+                metrics.observe_llm_tokens(
+                    model_alias=model_alias,
+                    input_tokens=usage.input_tokens,
+                    output_tokens=usage.output_tokens,
+                )
+            get_logger().info(
+                "llm_request_completed",
+                model_alias=model_alias,
+                outcome="success",
+                duration_ms=duration_seconds * 1000.0,
+            )
+            get_logger().info(
+                "llm_usage_recorded",
+                model_alias=model_alias,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.input_tokens + usage.output_tokens,
+            )
+        return usage
+
+    @staticmethod
+    def _record_failure(model_alias: str, start_ns: int, exc: BaseException) -> None:
+        duration_seconds = max(0.0, (time.perf_counter_ns() - start_ns) / 1_000_000_000)
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.observe_llm_request(
+                model_alias=model_alias,
+                outcome="error",
+                duration_seconds=duration_seconds,
+            )
+        get_logger().error(
+            "llm_request_failed",
+            model_alias=model_alias,
+            outcome="error",
+            duration_ms=duration_seconds * 1000.0,
+            **safe_error_fields(exc),
+        )

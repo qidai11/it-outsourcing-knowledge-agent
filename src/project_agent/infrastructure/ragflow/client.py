@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -12,6 +13,9 @@ from project_agent.infrastructure.ragflow.errors import (
     RagflowHttpError,
     RagflowProtocolError,
 )
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
+from project_agent.observability.sanitization import safe_error_fields
 
 SleepCallable = Callable[[float], Awaitable[None]]
 
@@ -74,21 +78,58 @@ class RagflowHttpClient:
         json: Any = None,
         files: Any = None,
     ) -> Any:
-        response = await self._request(method, path, params=params, json=json, files=files)
+        operation = _ragflow_operation(method, path)
+        start_ns = time.perf_counter_ns()
         try:
-            payload = response.json()
-        except ValueError as exc:
-            raise RagflowProtocolError("RAGFlow response is not valid JSON") from exc
-        if not isinstance(payload, dict):
-            raise RagflowProtocolError("RAGFlow JSON envelope must be an object")
+            response = await self._request(method, path, params=params, json=json, files=files)
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise RagflowProtocolError("RAGFlow response is not valid JSON") from exc
+            if not isinstance(payload, dict):
+                raise RagflowProtocolError("RAGFlow JSON envelope must be an object")
 
-        code = payload.get("code")
-        if code != 0:
-            raise RagflowApiError(
-                code if code is not None else "missing",
-                str(payload.get("message", "unknown error")),
+            code = payload.get("code")
+            if code != 0:
+                raise RagflowApiError(
+                    code if code is not None else "missing",
+                    str(payload.get("message", "unknown error")),
+                )
+            data = payload.get("data")
+        except BaseException as exc:
+            duration_seconds = max(0.0, (time.perf_counter_ns() - start_ns) / 1_000_000_000)
+            metrics = current_metrics()
+            if metrics is not None:
+                metrics.observe_ragflow(
+                    operation=operation,
+                    outcome="error",
+                    duration_seconds=duration_seconds,
+                )
+            get_logger().error(
+                "ragflow_request_failed",
+                provider="ragflow",
+                operation=operation,
+                outcome="error",
+                duration_ms=duration_seconds * 1000.0,
+                **safe_error_fields(exc),
             )
-        return payload.get("data")
+            raise
+        duration_seconds = max(0.0, (time.perf_counter_ns() - start_ns) / 1_000_000_000)
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.observe_ragflow(
+                operation=operation,
+                outcome="success",
+                duration_seconds=duration_seconds,
+            )
+        get_logger().info(
+            "ragflow_request_completed",
+            provider="ragflow",
+            operation=operation,
+            outcome="success",
+            duration_ms=duration_seconds * 1000.0,
+        )
+        return data
 
     async def _request(
         self,
@@ -141,3 +182,30 @@ class RagflowHttpClient:
         if isinstance(payload, dict) and payload.get("message") is not None:
             return str(payload["message"])
         return response.text[:500]
+
+
+def _ragflow_operation(method: str, path: str) -> str:
+    normalized_method = method.upper()
+    clean_path = path.split("?", 1)[0].rstrip("/")
+    parts = [part for part in clean_path.split("/") if part]
+    if clean_path == "/api/v1/retrieval" and normalized_method == "POST":
+        return "retrieve"
+    if clean_path == "/api/v1/datasets":
+        if normalized_method == "GET":
+            return "dataset_list"
+        if normalized_method == "POST":
+            return "dataset_create"
+    if len(parts) >= 5 and parts[:3] == ["api", "v1", "datasets"]:
+        tail = parts[4:]
+        if tail == ["documents"]:
+            if normalized_method == "POST":
+                return "document_upload"
+            if normalized_method == "GET":
+                return "document_list"
+            if normalized_method == "DELETE":
+                return "document_delete"
+        if len(tail) == 2 and tail[0] == "documents" and normalized_method == "PUT":
+            return "document_metadata_update"
+        if tail == ["chunks"] and normalized_method == "POST":
+            return "parse_start"
+    return "other"

@@ -45,6 +45,7 @@ from project_agent.domain.runs import (
 )
 from project_agent.infrastructure.db.repositories.runs import SqlAlchemyRunRepository
 from project_agent.infrastructure.jobs.postgres import SqlAlchemySessionJobEnqueuer
+from project_agent.observability.logging import bind_log_context
 
 
 class CreateRunRequest(BaseModel):
@@ -174,6 +175,7 @@ async def create_run(
     identity: Annotated[AuthenticatedIdentity, Depends(get_authenticated_identity)],
     services: Annotated[RunApiServices, Depends(get_run_api_services)],
 ) -> RunResponse:
+    bind_log_context(project_id=str(payload.project_id), business_mode=payload.business_mode.value)
     try:
         run = await services.runs.create_run(
             identity=identity,
@@ -202,6 +204,7 @@ async def resume_run(
     identity: Annotated[AuthenticatedIdentity, Depends(get_authenticated_identity)],
     services: Annotated[RunApiServices, Depends(get_run_api_services)],
 ) -> RunResponse:
+    bind_log_context(run_id=str(run_id))
     try:
         run = await services.runs.resume_run(
             identity=identity,
@@ -229,6 +232,7 @@ async def get_run(
     identity: Annotated[AuthenticatedIdentity, Depends(get_authenticated_identity)],
     services: Annotated[RunApiServices, Depends(get_run_api_services)],
 ) -> RunResponse:
+    bind_log_context(run_id=str(run_id))
     try:
         run = await services.runs.get_run(identity=identity, run_id=run_id)
     except (AuthorizationDenied, RunAccessDenied) as exc:
@@ -245,6 +249,7 @@ async def stream_run_events(
     services: Annotated[RunApiServices, Depends(get_run_api_services)],
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
 ) -> StreamingResponse:
+    bind_log_context(run_id=str(run_id))
     try:
         after_sequence = parse_last_event_id(last_event_id)
     except ValueError as exc:

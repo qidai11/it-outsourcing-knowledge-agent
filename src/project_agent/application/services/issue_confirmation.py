@@ -13,6 +13,8 @@ from project_agent.domain.issues import (
     ToolConfirmationReceipt,
     ToolConfirmationStatus,
 )
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 class ConfirmationPayloadMismatch(ValueError):
@@ -70,8 +72,10 @@ class IssueConfirmationService:
         prepared = await self.prepare(draft_id)
         now = self._clock()
         if now > prepared.expires_at:
+            _observe_confirmation("expired")
             raise ConfirmationExpired("issue creation confirmation expired")
         if request_payload_hash != prepared.request_payload_hash:
+            _observe_confirmation("payload_mismatch")
             raise ConfirmationPayloadMismatch("confirmation payload hash does not match draft")
         status = (
             ToolConfirmationStatus.CONFIRMED
@@ -97,4 +101,20 @@ class IssueConfirmationService:
             if status is ToolConfirmationStatus.CONFIRMED
             else IssueDraftStatus.CANCELLED,
         )
+        outcome = "confirmed" if status is ToolConfirmationStatus.CONFIRMED else "cancelled"
+        _observe_confirmation(outcome)
         return receipt
+
+
+def _observe_confirmation(outcome: str) -> None:
+    metrics = current_metrics()
+    if metrics is not None:
+        if outcome == "confirmed":
+            metrics.observe_issue_confirmation(outcome="confirmed")
+        elif outcome == "cancelled":
+            metrics.observe_issue_confirmation(outcome="cancelled")
+        elif outcome == "expired":
+            metrics.observe_issue_confirmation(outcome="expired")
+        elif outcome == "payload_mismatch":
+            metrics.observe_issue_confirmation(outcome="payload_mismatch")
+    get_logger().info("issue_confirmation_recorded", outcome=outcome)

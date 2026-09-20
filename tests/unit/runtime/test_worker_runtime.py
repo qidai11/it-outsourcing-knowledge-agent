@@ -36,6 +36,7 @@ def settings(**overrides: object) -> Settings:
         "llm_request_capacity": 10,
         "llm_token_capacity": 100_000,
         "retention_sweep_enabled": False,
+        "worker_metrics_enabled": False,
     }
     values.update(overrides)
     return Settings(**values)
@@ -318,3 +319,39 @@ async def test_default_worker_runtime_owns_provider_clients_and_preserves_ws3_ha
         assert all(not entry["client"].closed for entry in created)  # type: ignore[union-attr]
 
     assert all(entry["client"].closed for entry in created)  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_owns_metrics_server_lifecycle(
+    runtime_dependencies: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import project_agent.runtime.worker as module
+
+    seen: list[tuple[object, str, int]] = []
+
+    class FakeHandle:
+        def __init__(self) -> None:
+            self.closed = False
+        def close(self) -> None:
+            self.closed = True
+
+    handle = FakeHandle()
+
+    def fake_start(*, metrics, host: str, port: int):  # type: ignore[no-untyped-def]
+        seen.append((metrics, host, port))
+        return handle
+
+    monkeypatch.setattr(module, "start_metrics_http_server", fake_start)
+    configured = settings(
+        worker_metrics_enabled=True,
+        worker_metrics_host="127.0.0.1",
+        worker_metrics_port=9101,
+    )
+    async with build_worker_runtime(
+        configured,
+        graph_executor_factory=lambda _saver: FakeRunGraphExecutor(),
+    ) as runtime:
+        assert seen == [(runtime.metrics, "127.0.0.1", 9101)]
+        assert handle.closed is False
+    assert handle.closed is True

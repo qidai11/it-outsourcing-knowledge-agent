@@ -14,6 +14,8 @@ from project_agent.domain.runs import (
     RunRecord,
     RunStatus,
 )
+from project_agent.observability.logging import bind_log_context, get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 class RunExecutionContractError(RuntimeError):
@@ -80,6 +82,7 @@ class RunExecutionService:
                     event_type=AgentEventType.RUN_STARTED,
                     payload={},
                 )
+                get_logger().info("run_started", outcome="running")
         elif run.status is not RunStatus.RUNNING:
             return RunExecutionPreparation(run=run, invoke=False)
 
@@ -154,6 +157,7 @@ class RunExecutionService:
                 event_type=AgentEventType.WAITING_CONFIRMATION,
                 payload=dict(waiting_payload),
             )
+            get_logger().info("run_waiting_confirmation", outcome="waiting_confirmation")
             return run
 
         status, event_type = _terminal_projection(outcome.kind)
@@ -173,6 +177,20 @@ class RunExecutionService:
             event_type=event_type,
             payload=payload,
         )
+        outcome_name = status.value.lower()
+        duration_seconds = _run_duration_seconds(run)
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.observe_run(
+                business_mode=run.business_mode.value,
+                outcome=outcome_name,
+                duration_seconds=duration_seconds,
+            )
+        get_logger().info(
+            f"run_{outcome_name}",
+            outcome=outcome_name,
+            duration_ms=duration_seconds * 1000.0,
+        )
         return run
 
     async def mark_final_failure(self, run_id: UUID, error_code: str) -> RunRecord:
@@ -190,13 +208,39 @@ class RunExecutionService:
             event_type=AgentEventType.RUN_FAILED,
             payload={"error_code": error_code},
         )
+        duration_seconds = _run_duration_seconds(run)
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.observe_run(
+                business_mode=run.business_mode.value,
+                outcome="failed",
+                duration_seconds=duration_seconds,
+            )
+        get_logger().error(
+            "run_failed",
+            outcome="failed",
+            duration_ms=duration_seconds * 1000.0,
+            error_type=error_code,
+        )
         return run
 
     async def _require_run(self, run_id: UUID) -> RunRecord:
         run = await self._repository.get_run(run_id, for_update=True)
         if run is None:
             raise LookupError(run_id)
+        bind_log_context(
+            run_id=str(run.id),
+            project_id=str(run.project_id),
+            user_id=str(run.user_id),
+            business_mode=run.business_mode.value,
+        )
         return run
+
+
+def _run_duration_seconds(run: RunRecord) -> float:
+    if run.started_at is None or run.finished_at is None:
+        return 0.0
+    return max(0.0, (run.finished_at - run.started_at).total_seconds())
 
 
 def _terminal_projection(

@@ -83,3 +83,33 @@ async def test_worker_passes_claimed_attempt_metadata_to_handler() -> None:
     assert seen[0].aggregate_id == "agg-ctx"
     assert seen[0].attempts == 1
     assert seen[0].max_attempts == 4
+
+
+@pytest.mark.asyncio
+async def test_worker_context_is_isolated_between_concurrent_jobs() -> None:
+    from structlog.contextvars import get_contextvars
+
+    from project_agent.observability.metrics import ObservabilityMetrics
+
+    queue = FakeJobQueue()
+    await queue.enqueue(EnqueueJobRequest(job_type="TEST", aggregate_id="left"))
+    await queue.enqueue(EnqueueJobRequest(job_type="TEST", aggregate_id="right"))
+    seen: list[tuple[str, str, int]] = []
+
+    async def handler(job: QueuedJob) -> None:
+        await __import__("asyncio").sleep(0)
+        ctx = get_contextvars()
+        seen.append((str(ctx["job_id"]), str(ctx["job_type"]), int(ctx["attempt_count"])))
+
+    handlers = HandlerRegistry()
+    handlers.register("TEST", handler)
+    worker = BackgroundWorker(
+        queue, handlers, worker_id="worker-ctx",
+        settings=WorkerSettings(concurrency=2, claim_limit=2, heartbeat_seconds=60),
+        metrics=ObservabilityMetrics(),
+    )
+    assert await worker.run_once() == 2
+    assert len({item[0] for item in seen}) == 2
+    assert {item[1] for item in seen} == {"TEST"}
+    assert {item[2] for item in seen} == {1}
+    assert get_contextvars() == {}

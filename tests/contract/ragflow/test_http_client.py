@@ -94,3 +94,65 @@ async def test_does_not_retry_non_429_4xx() -> None:
 
     assert exc_info.value.status_code == 400
     assert attempts == 1
+
+@pytest.mark.asyncio
+async def test_ragflow_records_one_logical_success_after_retry() -> None:
+    from project_agent.observability.metrics import ObservabilityMetrics, metrics_context
+
+    attempts = 0
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, json={"code": 503, "message": "busy"})
+        return httpx.Response(200, json={"code": 0, "data": {"ok": True}})
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    metrics = ObservabilityMetrics()
+    async with httpx.AsyncClient(
+        base_url="http://ragflow.local",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        client = RagflowHttpClient(
+            http,
+            api_key="secret",
+            retry_policy=RagflowRetryPolicy(
+                max_attempts=2,
+                base_delay_seconds=0,
+                max_delay_seconds=0,
+            ),
+            sleep=no_sleep,
+        )
+        with metrics_context(metrics):
+            assert await client.request_data("GET", "/api/v1/datasets") == {"ok": True}
+    rendered = metrics.render_latest().decode()
+    expected = (
+        'project_agent_ragflow_requests_total'
+        '{operation="dataset_list",outcome="success"} 1.0'
+    )
+    assert expected in rendered
+    assert 'outcome="error"' not in rendered
+
+
+@pytest.mark.asyncio
+async def test_ragflow_error_uses_bounded_operation_not_dynamic_path() -> None:
+    from project_agent.observability.metrics import ObservabilityMetrics, metrics_context
+
+    sentinel = "doc-secret-123"
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"code": 400, "message": "PROVIDER-BODY-SENTINEL"})
+
+    metrics = ObservabilityMetrics()
+    async with httpx.AsyncClient(
+        base_url="http://ragflow.local",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        client = RagflowHttpClient(http, api_key="secret")
+        with metrics_context(metrics), pytest.raises(RagflowHttpError):
+            await client.request_data("PUT", f"/api/v1/datasets/ds-1/documents/{sentinel}")
+    rendered = metrics.render_latest().decode()
+    assert 'operation="document_metadata_update",outcome="error"' in rendered
+    assert sentinel not in rendered
+    assert "PROVIDER-BODY-SENTINEL" not in rendered

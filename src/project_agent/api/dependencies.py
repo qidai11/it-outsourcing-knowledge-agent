@@ -15,6 +15,7 @@ from project_agent.infrastructure.auth.jwt import JwtIdentityError
 from project_agent.infrastructure.db.repositories.authorization import (
     SqlAlchemyProjectAuthorizationRepository,
 )
+from project_agent.observability.logging import bind_log_context
 from project_agent.runtime.api import ApiRuntime
 
 _bearer = HTTPBearer(auto_error=False)
@@ -61,7 +62,9 @@ def get_authenticated_identity(
     if credentials is None or credentials.scheme.casefold() != "bearer":
         raise _authentication_failed()
     try:
-        return runtime.jwt_verifier.verify(credentials.credentials)
+        identity = runtime.jwt_verifier.verify(credentials.credentials)
+        bind_log_context(user_id=str(identity.user_id))
+        return identity
     except JwtIdentityError as exc:
         raise _authentication_failed() from exc
 

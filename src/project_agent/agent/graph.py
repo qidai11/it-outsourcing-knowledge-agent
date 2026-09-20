@@ -27,6 +27,7 @@ from project_agent.application.services.authorization import AuthorizationServic
 from project_agent.application.services.citation_guard import CitationGuard
 from project_agent.application.services.evidence_governance import EvidenceGovernanceService
 from project_agent.application.services.prompt_config import PromptConfigService
+from project_agent.observability.metrics import ObservedStructuredLLM
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +94,13 @@ def build_project_qa_graph(
         raise RuntimeError("langgraph is required to compile the QA graph") from exc
 
     builder = StateGraph(AgentState)
+    observed_llm: ObservedStructuredLLM | None = None
+
+    def get_observed_llm() -> ObservedStructuredLLM:
+        nonlocal observed_llm
+        if observed_llm is None:
+            observed_llm = ObservedStructuredLLM(deps.llm, deps.llm_usage)
+        return observed_llm
 
     async def load_prompt(state: AgentState) -> AgentState:
         return await load_prompt_snapshot_node(
@@ -139,10 +147,11 @@ def build_project_qa_graph(
         )
 
     async def grade_retrieval(state: AgentState) -> AgentState:
+        llm = get_observed_llm()
         return await grade_retrieval_node(
             state,
-            llm=deps.llm,
-            llm_usage=deps.llm_usage,
+            llm=llm,
+            llm_usage=llm,
             store=deps.store,
             model_alias=deps.model_alias,
         )
@@ -155,10 +164,11 @@ def build_project_qa_graph(
         )
 
     async def answer(state: AgentState) -> AgentState:
+        llm = get_observed_llm()
         return await generate_answer_node(
             state,
-            llm=deps.llm,
-            llm_usage=deps.llm_usage,
+            llm=llm,
+            llm_usage=llm,
             store=deps.store,
             model_alias=deps.model_alias,
         )
@@ -171,10 +181,11 @@ def build_project_qa_graph(
         )
 
     async def revise(state: AgentState) -> AgentState:
+        llm = get_observed_llm()
         return await revise_answer_node(
             state,
-            llm=deps.llm,
-            llm_usage=deps.llm_usage,
+            llm=llm,
+            llm_usage=llm,
             store=deps.store,
             model_alias=deps.model_alias,
         )

@@ -62,7 +62,7 @@ class ArtifactSession:
     async def flush(self) -> None:
         self.flush_calls += 1
 
-    async def get(self, _model: object, _key: object) -> object | None:
+    async def get(self, _model: object, _key: object, **_kwargs: object) -> object | None:
         return self.event
 
 
@@ -119,3 +119,31 @@ async def test_load_artifact_unwraps_artifact_available_event_envelope() -> None
     assert await store.load_artifact(artifact_id) == {
         "standalone_query": "approved design"
     }
+
+@pytest.mark.asyncio
+async def test_record_llm_usage_recomputes_cumulative_cost_and_retrieval_metric() -> None:
+    from project_agent.infrastructure.db.models.schema import AgentRunModel
+    from project_agent.observability.cost import TokenCostPolicy, cost_policy_context
+    from project_agent.observability.metrics import ObservabilityMetrics, metrics_context
+
+    run = AgentRunModel(
+        id=uuid4(), thread_id=uuid4(), company_id=uuid4(), project_id=uuid4(), user_id=uuid4(),
+        business_mode="qa", status="RUNNING", input_tokens=0, output_tokens=0, total_tokens=0,
+        retrieval_rounds=0, ocr_pages=0, estimated_cost_microunits=0, cost_currency="USD",
+    )
+    session = ArtifactSession(event=run)
+    store = SqlAlchemyQAGraphStore(cast(AsyncSession, session))
+    policy = TokenCostPolicy(333_333, 777_777, "USD")
+    metrics = ObservabilityMetrics()
+
+    with cost_policy_context(policy), metrics_context(metrics):
+        await store.record_llm_usage(run_id=run.id, input_tokens=3, output_tokens=2)
+        await store.record_llm_usage(run_id=run.id, input_tokens=4, output_tokens=1)
+        await store.increment_retrieval_rounds(run_id=run.id)
+
+    assert run.input_tokens == 7
+    assert run.output_tokens == 3
+    assert run.total_tokens == 10
+    assert run.estimated_cost_microunits == (7 * 333_333 + 3 * 777_777) // 1_000_000
+    assert run.cost_currency == "USD"
+    assert 'project_agent_retrieval_rounds_total 1.0' in metrics.render_latest().decode()

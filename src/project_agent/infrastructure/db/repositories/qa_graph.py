@@ -24,6 +24,9 @@ from project_agent.infrastructure.db.models.schema import (
     EvidenceBundleModel,
     EvidenceSnapshotModel,
 )
+from project_agent.observability.cost import current_cost_policy
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 class SqlAlchemyQAGraphStore:
@@ -136,12 +139,30 @@ class SqlAlchemyQAGraphStore:
         run.input_tokens += input_tokens
         run.output_tokens += output_tokens
         run.total_tokens += input_tokens + output_tokens
+        estimate = current_cost_policy().estimate(
+            input_tokens=run.input_tokens,
+            output_tokens=run.output_tokens,
+        )
+        run.estimated_cost_microunits = estimate.microunits
+        run.cost_currency = estimate.currency
+        get_logger().info(
+            "llm_usage_recorded",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            estimated_cost_microunits=estimate.microunits,
+            currency=estimate.currency,
+            cost_estimate_configured=estimate.configured,
+        )
 
     async def increment_retrieval_rounds(self, *, run_id: UUID) -> None:
         run = await self._session.get(AgentRunModel, run_id, with_for_update=True)
         if run is None:
             raise LookupError(f"agent run does not exist: {run_id}")
         run.retrieval_rounds += 1
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.increment_retrieval_round()
 
     async def save_evidence_bundle(
         self,

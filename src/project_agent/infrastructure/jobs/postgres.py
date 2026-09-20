@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import Select, select
@@ -12,6 +13,8 @@ from project_agent.application.ports.job_queue import (
     QueuedJob,
 )
 from project_agent.infrastructure.db.models.schema import BackgroundJobModel
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import ObservabilityMetrics
 
 
 class JobOwnershipError(RuntimeError):
@@ -117,6 +120,7 @@ class PostgresJobQueue:
         retry_base_seconds: float = 5.0,
         retry_max_seconds: float = 300.0,
         namespace: str = "project-agent",
+        metrics: ObservabilityMetrics | None = None,
     ) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -127,6 +131,7 @@ class PostgresJobQueue:
         self._retry_base = retry_base_seconds
         self._retry_max = retry_max_seconds
         self._namespace = namespace
+        self._metrics = metrics
 
     async def enqueue(self, request: EnqueueJobRequest) -> QueuedJob:
         _validate_enqueue_request(request)
@@ -152,7 +157,14 @@ class PostgresJobQueue:
                 row.lease_expires_at = now + self._lease
                 row.updated_at = now
             await session.commit()
-            return [_to_job(row) for row in rows]
+            jobs = [_to_job(row) for row in rows]
+            if self._metrics is not None:
+                for row in rows:
+                    age_seconds = max(0.0, (now - row.created_at).total_seconds())
+                    self._metrics.observe_queue_claim(
+                        job_type=row.job_type, age_seconds=age_seconds
+                    )
+            return jobs
 
     async def heartbeat(self, job_id: str, worker_id: str) -> None:
         now = datetime.now(UTC)
@@ -173,7 +185,10 @@ class PostgresJobQueue:
             row.heartbeat_at = None
             row.lease_expires_at = None
             row.updated_at = now
+            job_type = row.job_type
             await session.commit()
+            if self._metrics is not None:
+                self._metrics.observe_queue_completion(job_type=job_type)
 
     async def fail(self, job_id: str, worker_id: str, error_code: str) -> None:
         now = datetime.now(UTC)
@@ -196,7 +211,20 @@ class PostgresJobQueue:
                     )
                 )
             row.updated_at = now
+            job_type = row.job_type
+            outcome: Literal["retry", "failed"] = (
+                "failed" if row.status == JobState.FAILED.value else "retry"
+            )
             await session.commit()
+            if self._metrics is not None:
+                self._metrics.observe_queue_failure(job_type=job_type, outcome=outcome)
+            event = "job_failed" if outcome == "failed" else "job_retry_scheduled"
+            get_logger().info(
+                event,
+                job_type=job_type,
+                outcome=outcome,
+                error_type=error_code,
+            )
 
     async def get(self, job_id: str) -> QueuedJob | None:
         async with self._session_factory() as session:
@@ -218,6 +246,7 @@ class PostgresJobQueue:
         )
         async with self._session_factory() as session:
             rows = list((await session.scalars(stmt)).all())
+            reaped_counts: dict[tuple[str, Literal["retry", "failed"]], int] = {}
             for row in rows:
                 row.locked_by = None
                 row.locked_at = None
@@ -226,12 +255,24 @@ class PostgresJobQueue:
                 if not should_retry(attempt_count=row.attempt_count, max_attempts=row.max_attempts):
                     row.status = JobState.FAILED.value
                     row.last_error = row.last_error or "LEASE_EXPIRED_MAX_ATTEMPTS"
+                    outcome: Literal["retry", "failed"] = "failed"
                 else:
                     row.status = JobState.PENDING.value
                     row.available_at = now
                     row.last_error = "LEASE_EXPIRED"
+                    outcome = "retry"
+                key = (row.job_type, outcome)
+                reaped_counts[key] = reaped_counts.get(key, 0) + 1
                 row.updated_at = now
             await session.commit()
+            if self._metrics is not None:
+                for (job_type, outcome), count in reaped_counts.items():
+                    self._metrics.observe_queue_reaped(
+                        job_type=job_type, outcome=outcome, count=count
+                    )
+                    get_logger().info(
+                        "job_reaped", job_type=job_type, outcome=outcome, count=count
+                    )
             return len(rows)
 
     async def _owned_running(

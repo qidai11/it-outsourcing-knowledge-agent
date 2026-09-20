@@ -89,3 +89,39 @@ async def test_confirmation_exposes_frozen_evidence_without_changing_provider_pa
     assert request.evidence_ids == evidence_ids
     assert request.request_payload_hash == drafts.payload_hash(create_request)
     assert not hasattr(create_request, "evidence_ids")
+
+@pytest.mark.asyncio
+async def test_confirmation_metrics_record_confirmed_and_payload_mismatch() -> None:
+    from project_agent.observability.metrics import ObservabilityMetrics, metrics_context
+
+    now = datetime(2026, 9, 20, 8, 0, tzinfo=UTC)
+    repo = FakeIssueWorkflowRepository(clock=lambda: now)
+    drafts = IssueDraftService(repo)
+    draft = await drafts.create_from_text(
+        run_id=uuid4(), project_id=uuid4(), created_by=uuid4(), text="issue"
+    )
+    service = IssueConfirmationService(repo, drafts=drafts, clock=lambda: now)
+    prepared = await service.prepare(draft.id)
+    metrics = ObservabilityMetrics()
+    with metrics_context(metrics):
+        await service.record_decision(
+            draft_id=draft.id,
+            actor_id=draft.created_by,
+            action=ConfirmationAction.CONFIRM,
+            request_payload_hash=prepared.request_payload_hash,
+        )
+    rendered = metrics.render_latest().decode()
+    assert 'project_agent_issue_confirmation_total{outcome="confirmed"} 1.0' in rendered
+
+    other = await drafts.create_from_text(
+        run_id=uuid4(), project_id=uuid4(), created_by=uuid4(), text="other"
+    )
+    with metrics_context(metrics), pytest.raises(ConfirmationPayloadMismatch):
+        await service.record_decision(
+            draft_id=other.id,
+            actor_id=other.created_by,
+            action=ConfirmationAction.CONFIRM,
+            request_payload_hash="0" * 64,
+        )
+    rendered = metrics.render_latest().decode()
+    assert 'project_agent_issue_confirmation_total{outcome="payload_mismatch"} 1.0' in rendered

@@ -16,6 +16,7 @@ from project_agent.observability.logging import (
 from project_agent.observability.metrics import (
     MetricsHttpServerHandle,
     ObservabilityMetrics,
+    ObservedStructuredLLM,
     current_metrics,
     metrics_context,
     start_metrics_http_server,
@@ -31,6 +32,7 @@ __all__ = [
     "CostEstimate",
     "MetricsHttpServerHandle",
     "ObservabilityMetrics",
+    "ObservedStructuredLLM",
     "TokenCostPolicy",
     "bind_log_context",
     "clear_log_context",

@@ -296,3 +296,21 @@ async def test_mark_final_failure_is_idempotent_and_persists_error_code_only() -
     ]
     assert len(failures) == 1
     assert failures[0].payload == {"error_code": "TimeoutError"}
+
+@pytest.mark.asyncio
+async def test_terminal_run_metric_is_counted_once_on_replay() -> None:
+    from project_agent.observability.metrics import ObservabilityMetrics, metrics_context
+
+    repo, run = await seeded_run(status=RunStatus.RUNNING)
+    repo.runs[run.id] = replace(run, started_at=NOW)
+    service = RunExecutionService(repo, clock=lambda: NOW)
+    metrics = ObservabilityMetrics()
+    outcome = RunGraphOutcome(kind=RunGraphOutcomeKind.SUCCEEDED)
+
+    with metrics_context(metrics):
+        await service.persist_outcome(run.id, outcome)
+        await service.persist_outcome(run.id, outcome)
+
+    rendered = metrics.render_latest().decode()
+    sample = 'project_agent_runs_total{business_mode="issue_create",outcome="succeeded"} 1.0'
+    assert sample in rendered

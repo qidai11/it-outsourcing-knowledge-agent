@@ -8,6 +8,8 @@ from uuid import UUID
 
 from project_agent.domain.access import ProjectAccessScope
 from project_agent.domain.enums import ProjectRole
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 class AuthorizationDenied(PermissionError):
@@ -100,6 +102,10 @@ class AuthorizationService:
             at=now,
         )
         if membership is None:
+            metrics = current_metrics()
+            if metrics is not None:
+                metrics.observe_authorization_denial(reason="no_active_membership")
+            get_logger().info("authorization_denied", reason="no_active_membership")
             raise AuthorizationDenied("active project membership is required")
 
         documents = await self._repository.list_published_document_access(project_id=project_id)
