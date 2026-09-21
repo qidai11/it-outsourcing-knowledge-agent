@@ -18,6 +18,7 @@ from project_agent.infrastructure.llm.adapter import (
     OpenAICompatibleStructuredLLMAdapter,
     StructuredLLMRetryPolicy,
 )
+from project_agent.infrastructure.object_store.local import LocalFileObjectStoreAdapter
 from project_agent.infrastructure.ragflow.adapter import RagflowAdapter
 from project_agent.infrastructure.ragflow.client import RagflowRetryPolicy
 from project_agent.observability.cost import TokenCostPolicy
@@ -27,7 +28,9 @@ from project_agent.observability.metrics import (
     ObservabilityMetrics,
     start_metrics_http_server,
 )
+from project_agent.runtime.issue import ProductionIssueRunGraphExecutor
 from project_agent.runtime.qa import build_production_qa_executor
+from project_agent.runtime.run_graph import build_production_run_graph_executor
 from project_agent.workers.handlers import (
     EXECUTE_AGENT_RUN,
     RECONCILE_ISSUE_CREATE,
@@ -186,7 +189,7 @@ async def _default_qa_executor_lifetime(
         knowledge = RagflowAdapter.from_http_client(
             ragflow_http,
             api_key=settings.ragflow_api_key.get_secret_value(),
-            object_store=None,
+            object_store=LocalFileObjectStoreAdapter(settings.local_storage_root),
             embedding_model=settings.ragflow_embedding_model,
             chunk_method=settings.ragflow_chunk_method,
             retry_policy=RagflowRetryPolicy(max_attempts=settings.ragflow_max_attempts),
@@ -197,7 +200,7 @@ async def _default_qa_executor_lifetime(
             retry_policy=StructuredLLMRetryPolicy(max_attempts=settings.llm_max_attempts),
             request_timeout_seconds=settings.llm_request_timeout_seconds,
         )
-        yield build_production_qa_executor(
+        qa = build_production_qa_executor(
             settings=settings,
             session_factory=session_factory,
             saver=saver,
@@ -205,6 +208,12 @@ async def _default_qa_executor_lifetime(
             llm=llm,
             llm_usage=llm,
         )
+        issue = ProductionIssueRunGraphExecutor(
+            settings,
+            saver,
+            knowledge=knowledge,
+        )
+        yield build_production_run_graph_executor(qa=qa, issue=issue)
 
 
 def _validate_worker_configuration(

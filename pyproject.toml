@@ -19,6 +19,9 @@ dependencies = [
   "uvicorn>=0.35,<1.0",
 ]
 
+[project.scripts]
+project-agent-worker = "project_agent.cli.worker:main"
+
 [dependency-groups]
 dev = [
   "mypy>=1.17,<2.0",
