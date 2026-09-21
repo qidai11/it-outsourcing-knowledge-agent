@@ -73,3 +73,6 @@ Thumbs.db
 # Local evaluation development assets
 .worktrees/
 eval/datasets/
+
+# WS7 live acceptance evidence
+artifacts/ws7-live/

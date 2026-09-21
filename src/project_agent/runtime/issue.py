@@ -109,6 +109,7 @@ class ProductionIssueRunGraphExecutor(RunGraphExecutor):
     ) -> RunGraphOutcome:
         async with self._session_factory() as session:
             try:
+                await self._bind_authorized_knowledge_spaces(run, session)
                 graph = self._build_graph(run.business_mode, session)
                 from project_agent.workers.run_graph import LangGraphRunExecutor
 
@@ -122,6 +123,27 @@ class ProductionIssueRunGraphExecutor(RunGraphExecutor):
             except Exception:
                 await session.rollback()
                 raise
+
+    async def _bind_authorized_knowledge_spaces(
+        self,
+        run: RunRecord,
+        session: AsyncSession,
+    ) -> None:
+        if run.business_mode is not RunBusinessMode.ISSUE_CREATE:
+            return
+        bind_space = getattr(self._knowledge, "bind_authorized_space", None)
+        if not callable(bind_space):
+            return
+
+        authorization = AuthorizationService(
+            SqlAlchemyProjectAuthorizationRepository(session)
+        )
+        context = await authorization.authorize_project(
+            user_id=run.user_id,
+            project_id=run.project_id,
+        )
+        for dataset_id in context.knowledge_space_ids:
+            bind_space(project_id=context.project_code, dataset_id=dataset_id)
 
     def _build_graph(self, mode: RunBusinessMode, session: AsyncSession) -> Any:
         auth_repo = SqlAlchemyProjectAuthorizationRepository(session)

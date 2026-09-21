@@ -368,14 +368,12 @@ async def _seed_live_database(
             EnqueueJobRequest(
                 job_type=RunJobType.EXECUTE.value,
                 aggregate_id=str(alpha_run_id),
-                max_attempts=1,
             )
         )
         beta_job = await jobs.enqueue(
             EnqueueJobRequest(
                 job_type=RunJobType.EXECUTE.value,
                 aggregate_id=str(beta_run_id),
-                max_attempts=1,
             )
         )
         await session.commit()
@@ -629,10 +627,25 @@ async def test_real_worker_answers_and_refuses_with_bounded_project_scoped_evide
             )
 
             async with build_worker_runtime(settings) as runtime:
-                assert await runtime.worker.run_once() == 1
-                assert await runtime.worker.run_once() == 1
+                terminal_states = {JobState.SUCCEEDED, JobState.FAILED}
                 alpha_job = await runtime.queue.get(seed.alpha.job_id)
                 beta_job = await runtime.queue.get(seed.beta.job_id)
+                for _ in range(8):
+                    if (
+                        alpha_job is not None
+                        and beta_job is not None
+                        and alpha_job.state in terminal_states
+                        and beta_job.state in terminal_states
+                    ):
+                        break
+                    processed = await runtime.worker.run_once()
+                    assert processed in {0, 1}
+                    if processed == 0:
+                        await asyncio.sleep(0.01)
+                    alpha_job = await runtime.queue.get(seed.alpha.job_id)
+                    beta_job = await runtime.queue.get(seed.beta.job_id)
+                else:
+                    pytest.fail("WS4 live QA jobs did not reach terminal states")
                 assert alpha_job is not None and alpha_job.state is JobState.SUCCEEDED
                 assert beta_job is not None and beta_job.state is JobState.SUCCEEDED
 

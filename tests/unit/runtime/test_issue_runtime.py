@@ -10,7 +10,12 @@ import pytest
 from pydantic import SecretStr
 
 from project_agent.application.ports.knowledge import KnowledgeRetrievalPort
+from project_agent.application.services.authorization import (
+    AuthorizationService,
+    AuthorizedProjectContext,
+)
 from project_agent.config import Settings
+from project_agent.domain.access import ProjectAccessScope
 from project_agent.domain.runs import RunBusinessMode
 from project_agent.runtime.issue import (
     ProductionIssueRunGraphExecutor,
@@ -156,7 +161,7 @@ class _FakeSessionFactory:
         return self.session
 
 
-def _run(mode: RunBusinessMode):
+def _run(mode: RunBusinessMode, *, user_id=None, project_id=None):  # type: ignore[no-untyped-def]
     from uuid import uuid4
 
     from project_agent.domain.runs import RunRecord, RunStatus
@@ -165,8 +170,8 @@ def _run(mode: RunBusinessMode):
         id=uuid4(),
         thread_id=uuid4(),
         company_id=uuid4(),
-        project_id=uuid4(),
-        user_id=uuid4(),
+        project_id=project_id or uuid4(),
+        user_id=user_id or uuid4(),
         business_mode=mode,
         status=RunStatus.RUNNING,
         started_at=None,
@@ -236,3 +241,88 @@ async def test_issue_runtime_rolls_back_graph_business_transaction_on_failure(
 
     assert session.commits == 0
     assert session.rollbacks == 1
+
+
+class _BindingKnowledge:
+    def __init__(self) -> None:
+        self.bindings: list[tuple[str, str]] = []
+
+    def bind_authorized_space(self, *, project_id: str, dataset_id: str) -> None:
+        self.bindings.append((project_id, dataset_id))
+
+
+@pytest.mark.asyncio
+async def test_issue_create_runtime_binds_db_authorized_knowledge_spaces_before_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import uuid4
+
+    import project_agent.runtime.issue as module
+    from project_agent.application.ports.run_graph import RunGraphOutcome, RunGraphOutcomeKind
+
+    engine = _FakeEngine()
+    session = _FakeSession()
+    factory = _FakeSessionFactory(session)
+    monkeypatch.setattr(module, "create_engine", lambda _url: engine)
+    monkeypatch.setattr(module, "create_session_factory", lambda _engine: factory)
+    knowledge = _BindingKnowledge()
+    executor = ProductionIssueRunGraphExecutor(
+        _settings(),
+        object(),
+        knowledge=cast(KnowledgeRetrievalPort, knowledge),
+    )
+
+    project_id = uuid4()
+    user_id = uuid4()
+    scope = ProjectAccessScope(
+        company_id=uuid4(),
+        user_id=user_id,
+        allowed_client_ids=(uuid4(),),
+        allowed_project_ids=(project_id,),
+        allowed_document_version_ids=(uuid4(),),
+        allowed_document_categories=("requirement_baseline",),
+        role_ids=("developer",),
+        max_security_level=0,
+        policy_version="project-membership-v1",
+    )
+    context = AuthorizedProjectContext(
+        scope=scope,
+        project_code="WS7-ISSUE-A",
+        knowledge_space_ids=("dataset-a", "dataset-b"),
+    )
+
+    async def authorize_project(self, *, user_id, project_id):  # type: ignore[no-untyped-def]
+        del self, user_id, project_id
+        return context
+
+    monkeypatch.setattr(AuthorizationService, "authorize_project", authorize_project)
+    monkeypatch.setattr(executor, "_build_graph", lambda _mode, _session: object())
+
+    fake_run_graph = ModuleType("project_agent.workers.run_graph")
+
+    class FakeDelegate:
+        def __init__(self, _graphs: object) -> None:
+            pass
+
+        async def execute(self, _run_record: object) -> RunGraphOutcome:
+            return RunGraphOutcome(kind=RunGraphOutcomeKind.WAITING_CONFIRMATION)
+
+        async def resume(
+            self, _run_record: object, _resume_payload: dict[str, object]
+        ) -> RunGraphOutcome:
+            raise AssertionError("resume not expected")
+
+    fake_run_graph.LangGraphRunExecutor = FakeDelegate  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "project_agent.workers.run_graph", fake_run_graph)
+
+    outcome = await executor.execute(
+        _run(RunBusinessMode.ISSUE_CREATE, user_id=user_id, project_id=project_id)
+    )
+
+    assert outcome.kind is RunGraphOutcomeKind.WAITING_CONFIRMATION
+    assert knowledge.bindings == [
+        ("WS7-ISSUE-A", "dataset-a"),
+        ("WS7-ISSUE-A", "dataset-b"),
+    ]
+    assert session.commits == 1
+    assert session.rollbacks == 0
