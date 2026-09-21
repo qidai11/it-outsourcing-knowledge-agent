@@ -1,3 +1,24 @@
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+asyncpg://project_agent:project_agent@postgres:5432/project_agent
+  LOCAL_STORAGE_ROOT: /var/lib/project-agent/data
+  RAGFLOW_BASE_URL: http://host.docker.internal:9380
+
+x-app-common: &app-common
+  build:
+    context: .
+  image: project-agent:ws7
+  env_file:
+    - path: .env
+      required: false
+  environment: *app-environment
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  depends_on:
+    postgres:
+      condition: service_healthy
+  volumes:
+    - project_agent_app_data:/var/lib/project-agent/data
+
 services:
   postgres:
     image: postgres:16
@@ -15,5 +36,42 @@ services:
     volumes:
       - project_agent_postgres_data:/var/lib/postgresql/data
 
+  app-api:
+    <<: *app-common
+    command: ["uvicorn", "project_agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)
+      interval: 5s
+      timeout: 4s
+      retries: 20
+
+  app-worker:
+    <<: *app-common
+    command: ["project-agent-worker"]
+    environment:
+      <<: *app-environment
+      RETENTION_SWEEP_ENABLED: "false"
+      WORKER_METRICS_ENABLED: "true"
+      WORKER_METRICS_HOST: 0.0.0.0
+      WORKER_METRICS_PORT: "9101"
+    ports:
+      - "9101:9101"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/metrics', timeout=3)
+      interval: 5s
+      timeout: 4s
+      retries: 20
+
 volumes:
   project_agent_postgres_data:
+  project_agent_app_data:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy import text
 
 from project_agent.config import Settings, load_settings
 
@@ -25,7 +26,7 @@ async def live() -> dict[str, str]:
 
 @router.get("/ready", response_model=None)
 async def ready(request: Request) -> dict[str, str] | JSONResponse:
-    """Readiness probe for Task 1: validate local configuration only."""
+    """Readiness probe: valid configuration plus reachable PostgreSQL."""
 
     try:
         _resolve_settings(request)
@@ -35,4 +36,28 @@ async def ready(request: Request) -> dict[str, str] | JSONResponse:
             content={"status": "not_ready", "configuration": "invalid"},
         )
 
-    return {"status": "ready", "configuration": "ok"}
+    runtime = getattr(request.app.state, "runtime", None)
+    if runtime is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "configuration": "ok",
+                "database": "unavailable",
+            },
+        )
+
+    try:
+        async with runtime.engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "configuration": "ok",
+                "database": "unavailable",
+            },
+        )
+
+    return {"status": "ready", "configuration": "ok", "database": "ok"}

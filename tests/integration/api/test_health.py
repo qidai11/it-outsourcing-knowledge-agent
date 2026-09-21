@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -39,14 +41,93 @@ def test_live_does_not_require_external_services(tmp_path: Path) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_ready_reports_configuration_ready_without_calling_external_services(
+class _FakeConnection:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.error = error
+        self.statements: list[str] = []
+
+    async def __aenter__(self) -> _FakeConnection:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: Any,
+    ) -> None:
+        del exc_type, exc, traceback
+
+    async def execute(self, statement: object) -> None:
+        self.statements.append(str(statement))
+        if self.error is not None:
+            raise self.error
+
+
+class _FakeEngine:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.connection = _FakeConnection(error=error)
+        self.connect_calls = 0
+
+    def connect(self) -> _FakeConnection:
+        self.connect_calls += 1
+        return self.connection
+
+
+def _runtime_factory_with_engine(engine: _FakeEngine):
+    @asynccontextmanager
+    async def factory(_settings: Settings) -> AsyncIterator[ApiRuntime]:
+        runtime = cast(ApiRuntime, SimpleNamespace(engine=engine))
+        yield runtime
+
+    return factory
+
+
+def test_ready_reports_database_ready_without_calling_provider_services(
     tmp_path: Path,
 ) -> None:
-    with TestClient(create_app(_test_settings(tmp_path))) as client:
+    engine = _FakeEngine()
+
+    with TestClient(
+        create_app(
+            _test_settings(tmp_path),
+            runtime_factory=_runtime_factory_with_engine(engine),
+        )
+    ) as client:
         response = client.get("/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "configuration": "ok"}
+    assert response.json() == {
+        "status": "ready",
+        "configuration": "ok",
+        "database": "ok",
+    }
+    assert engine.connect_calls == 1
+    assert engine.connection.statements == ["SELECT 1"]
+
+
+def test_ready_returns_sanitized_not_ready_when_database_probe_fails(
+    tmp_path: Path,
+) -> None:
+    engine = _FakeEngine(
+        error=RuntimeError("postgresql://project_agent:secret@postgres/project_agent")
+    )
+
+    with TestClient(
+        create_app(
+            _test_settings(tmp_path),
+            runtime_factory=_runtime_factory_with_engine(engine),
+        )
+    ) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "configuration": "ok",
+        "database": "unavailable",
+    }
+    assert "postgresql" not in response.text
+    assert "secret" not in response.text
 
 
 def test_invalid_environment_keeps_live_available_and_ready_not_ready(
