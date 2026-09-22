@@ -1,0 +1,120 @@
+{
+  "artifacts": {
+    "corpus_manifest": "corpus-manifest.jsonl",
+    "corpus_root": "corpus/",
+    "fixtures": {
+      "fault_and_setup_scenarios": "fixtures/fault-scenarios.json",
+      "identities": "fixtures/identities.json",
+      "memberships": "fixtures/memberships.json",
+      "sandbox_issues": "fixtures/sandbox-issues.json"
+    },
+    "fixtures_status": "frozen",
+    "gold_manifest": "gold-manifest.jsonl",
+    "gold_manifest_status": "frozen_B6",
+    "question_catalog": "question-catalog.csv"
+  },
+  "authority_order": [
+    "current project source/tests",
+    "2026-09-22-ws8-evaluation-design.md",
+    "frozen business/V1 design documents",
+    "question-catalog.csv",
+    "public methodology/realism references"
+  ],
+  "benchmark_name": "it-outsourcing-knowledge-agent WS8 Synthetic Evaluation Benchmark V0",
+  "construction_constraints": [
+    "Do not edit the frozen question catalog to improve scores.",
+    "Do not change frozen corpus facts after B5 without a versioned benchmark amendment.",
+    "Do not derive Gold from Agent output.",
+    "Do not use public references as acceptable runtime Evidence.",
+    "DRAFT, UNDER_REVIEW, SUPERSEDED and DELETE_PENDING documents are not normal current-answer Gold.",
+    "Do not weaken JWT, membership, project isolation, Evidence governance, Citation Guard, confirmation, idempotency or reconciliation."
+  ],
+  "counts": {
+    "alpha_documents": 10,
+    "beta_documents": 9,
+    "company_public_documents": 3,
+    "corpus_documents": 22,
+    "frozen_document_facts": 40,
+    "gold_records": 50,
+    "known_unscorable_runtime_scope_cases": 3,
+    "question_cases": 50,
+    "scorable_gold_cases": 47,
+    "unscorable_runtime_scope_cases": 3
+  },
+  "data_provenance": "synthetic",
+  "dataset_version": "v0",
+  "freeze_review": {
+    "corpus_changed": false,
+    "decision": "APPROVED",
+    "fixtures_changed": false,
+    "gold_applicability_changes": [
+      "Q012",
+      "Q041"
+    ],
+    "gold_schema_version_changed": false,
+    "known_unscorable_runtime_scope": [
+      "Q014",
+      "Q046",
+      "Q049"
+    ],
+    "metric_definition_version_changed": false,
+    "phase": "B7",
+    "question_catalog_changed": false
+  },
+  "integrity": {
+    "b1_case_fact_matrix_sha256": "5c6ace8c09e117622d9ac203c96ad38e5dc1f85e4b5822764c6ad943d57f8cca",
+    "b1_synthetic_fact_inventory_sha256": "b84d2f0d63a25fc278c2852796c850843cf87a4fa0b954119c29ac16fee5a92f",
+    "b4_validation_sha256": "10a3a910c9fb83148fac9322871a3aff9217920bf6924446c1a490ffd3c36080",
+    "corpus_hash_definition": "SHA256(concat(sorted_by_source_path: UTF8(source_path) + NUL + ASCII(file_sha256) + LF))",
+    "corpus_manifest_sha256": "c899de928f2c48d9ef27abb3a0e5cebee8ee1aeca97e03b35e7c062a70aa1512",
+    "corpus_sha256": "e880c250b570f9419528b8958cec21c7a239e7394e0c8cc3d54aad1688cc9521",
+    "document_catalog_sha256": "7967610c18475cd01094c870d238956895cc17827885bbb4db9b403941c83bbb",
+    "fixture_file_sha256": {
+      "fixtures/fault-scenarios.json": "2eba568c8f56efa77b2d071e01f1c78986febf4be1bd1c59483d2947d99a3ca2",
+      "fixtures/identities.json": "2bb6c8533ae83a0163dbb419b123d68326ae6156d34065e7db1a9f9c866eeb7e",
+      "fixtures/memberships.json": "a083009633a7914bfd826325c5e3ffd121ef11919ab89def0566c37d097cc422",
+      "fixtures/sandbox-issues.json": "416c26db09e5e4e4f3045da436e4ef2d0eb9391add044a2792b4686f5459b9c1"
+    },
+    "fixture_hash_definition": "SHA256(concat(sorted_by_path: UTF8(path) + NUL + ASCII(file_sha256) + LF))",
+    "fixtures_sha256": "30af875821a8bf4f0bec8f2721276d7f6d05683359dcd3cbd2d958f756d0e41e",
+    "gold_manifest_schema_sha256": "4d37d43936a35d1a1f11a45a9df834d6432cc268e678abcefbfbdb74d0b8f0bb",
+    "gold_manifest_sha256": "05e6962b927762dc85cb8f5217cf8d8970cab98b2214b92cb27aff3b3bc388b1",
+    "hash_algorithm": "SHA-256",
+    "question_catalog_sha256": "c79eb4c30395308216d271fb3f632f5ba1256ab452c15145943ddf021d1d94e5"
+  },
+  "known_unscorable_runtime_scope": [
+    {
+      "case_id": "Q014",
+      "reason": "Fuzzy identifier suggestion/confirmation is not composed into the current QA Run protocol."
+    },
+    {
+      "case_id": "Q046",
+      "reason": "The current Run/authorization model has no first-class company-public execution scope."
+    },
+    {
+      "case_id": "Q049",
+      "reason": "The current issue_lookup runtime has no deterministic exact issue-key lookup path."
+    }
+  ],
+  "manifest_schema_version": "dataset-manifest-v1",
+  "project_baseline": {
+    "alembic_head": "0005_run_runtime_envelope",
+    "base_commit_subject": "feat(ws7): complete compose live acceptance",
+    "base_head": "8eba69cb94bcaec4cba1eecdf2f5a0f448daa6f3",
+    "branch": "feat/ws8",
+    "ragflow_version": "v0.26.4"
+  },
+  "source_of_truth": {
+    "business_truth": "frozen project business rules + frozen B1 synthetic fact inventory",
+    "corpus_truth": "22 frozen B4 Markdown files",
+    "gold_truth": "frozen corpus + frozen business rules; never Agent output",
+    "public_reference_policy": "methodology/realism reference only; never runtime Evidence or Gold authority"
+  },
+  "status": "V0_FROZEN_READY_FOR_WS8_IMPLEMENTATION",
+  "versions": {
+    "corpus_manifest_schema_version": "corpus-manifest-v1",
+    "corpus_version": "v0",
+    "gold_schema_version": "gold-v1",
+    "metric_definition_version": "v1"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "data_provenance": "synthetic",
+  "dataset_version": "v0",
+  "materialization_note": "ACTIVE_FROM is a deterministic technical seed value implementing B1's active-membership facts; the expired valid_to value is frozen directly by FIX_MEM_EXPIRED.",
+  "memberships": [
+    {
+      "expected_current": true,
+      "fact_id": "FIX_MEM_ALPHA_DEV",
+      "membership_id": "16810218-f16d-54e5-bf45-96d8736c9f98",
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "role": "developer",
+      "user_alias": "u-alpha-dev",
+      "user_id": "7694cd41-b674-54d4-a46a-65bfbea63ba3",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": null
+    },
+    {
+      "expected_current": true,
+      "fact_id": "FIX_MEM_ALPHA_QA",
+      "membership_id": "34acf52b-c079-5072-af09-853d177931de",
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "role": "qa",
+      "user_alias": "u-alpha-qa",
+      "user_id": "a28d8141-fd1c-515d-a47d-3388e102c29f",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": null
+    },
+    {
+      "expected_current": true,
+      "fact_id": "FIX_MEM_BETA_DEV",
+      "membership_id": "b1a48ada-7e22-574a-a48f-db3c4fdad5a8",
+      "project_code": "PRJ-LOGISTICS-BETA",
+      "role": "developer",
+      "user_alias": "u-beta-dev",
+      "user_id": "0a4f930d-98d7-5b24-b91c-bb521a71a9da",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": null
+    },
+    {
+      "expected_current": true,
+      "fact_id": "FIX_MEM_BETA_QA",
+      "membership_id": "8ecd508e-6970-5273-99ed-617ef43dc1e5",
+      "project_code": "PRJ-LOGISTICS-BETA",
+      "role": "qa",
+      "user_alias": "u-beta-qa",
+      "user_id": "8da45f58-f213-5db1-b7c6-080855fc4753",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": null
+    },
+    {
+      "expected_current": true,
+      "fact_id": "FIX_MEM_ALPHA_VIEWER",
+      "membership_id": "3fdc5ad9-46de-5ba1-b896-8f2d34be25c8",
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "role": "viewer",
+      "user_alias": "u-alpha-viewer",
+      "user_id": "e13a3e39-37b0-53e4-9ae4-7a55a6b23f62",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": null
+    },
+    {
+      "expected_current": false,
+      "fact_id": "FIX_MEM_EXPIRED",
+      "membership_id": "118a2f31-a21d-5862-88ef-92b1059cbf27",
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "role": "developer",
+      "user_alias": "u-expired",
+      "user_id": "5113295a-42ed-5351-a520-148208dc3f28",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": "2026-06-30T00:00:00Z"
+    }
+  ],
+  "no_membership_identities": [
+    {
+      "expected_membership_count": 0,
+      "fact_id": "FIX_MEM_OUTSIDER",
+      "user_alias": "u-outsider",
+      "user_id": "84f3bcd5-98c1-53bc-801b-19482001bb2c"
+    }
+  ],
+  "schema_version": "fixture-memberships-v1"
+}

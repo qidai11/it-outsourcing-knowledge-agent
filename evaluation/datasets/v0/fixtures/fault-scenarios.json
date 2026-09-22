@@ -1,0 +1,138 @@
+{
+  "data_provenance": "synthetic",
+  "dataset_version": "v0",
+  "fault_scenarios": [
+    {
+      "actions": [
+        "invoke_confirmed_create_with_fixed_request_id",
+        "replay_same_logical_create_with_same_request_id"
+      ],
+      "expected": {
+        "max_external_issue_count_delta": 1
+      },
+      "fact_id": "FAULT_SAME_REQUEST_REPLAY",
+      "kind": "same_request_replay",
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "requires_setup_scenario": "SETUP_ALPHA_CONFIRMED_CREATE",
+      "scenario_id": "FAULT_SAME_REQUEST_REPLAY",
+      "source_fact_ids": [
+        "RULE_ISSUE_IDEMPOTENT"
+      ],
+      "used_by_cases": [
+        "Q044"
+      ]
+    },
+    {
+      "actions_after_fault": [
+        "reconcile_by_request_id",
+        "do_not_blind_create"
+      ],
+      "expected": {
+        "max_external_issue_count_delta": 1,
+        "reconciliation_required": true
+      },
+      "fact_id": "FAULT_CREATE_RESPONSE_LOSS",
+      "fault_boundary": "after_sandbox_issue_persist_before_success_response_observed",
+      "kind": "create_success_then_response_loss",
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "requires_setup_scenario": "SETUP_ALPHA_CONFIRMED_CREATE",
+      "scenario_id": "FAULT_CREATE_RESPONSE_LOSS",
+      "source_fact_ids": [
+        "RULE_ISSUE_IDEMPOTENT",
+        "RULE_ISSUE_RESPONSE_LOSS_RECONCILE"
+      ],
+      "used_by_cases": [
+        "Q045"
+      ]
+    }
+  ],
+  "schema_version": "fixture-scenarios-v1",
+  "setup_scenarios": [
+    {
+      "context": {
+        "grounding_fact_ids": [
+          "A_TEST_EXPORT_DATE_UAT",
+          "FIX_ALPHA_104"
+        ],
+        "summary": "客户反馈：UAT 中导出的 Excel 日期显示错误。"
+      },
+      "fact_id": "SETUP_ALPHA_DATE_DEFECT_CONTEXT",
+      "kind": "prior_thread_context",
+      "preconditions": {
+        "confirmation_created": false,
+        "issue_draft_created": false,
+        "sandbox_side_effect_count_delta": 0
+      },
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "scenario_id": "SETUP_ALPHA_DATE_DEFECT_CONTEXT",
+      "source_fact_ids": [
+        "A_TEST_EXPORT_DATE_UAT",
+        "FIX_ALPHA_104"
+      ],
+      "used_by_cases": [
+        "Q016",
+        "Q038"
+      ]
+    },
+    {
+      "fact_id": "SETUP_ALPHA_DATE_DRAFT_WAITING",
+      "kind": "waiting_confirmation_state",
+      "preconditions": {
+        "issue_draft_created": true,
+        "payload_bound_confirmation_pending": true,
+        "run_status": "WAITING_CONFIRMATION",
+        "sandbox_side_effect_count_delta": 0
+      },
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "scenario_id": "SETUP_ALPHA_DATE_DRAFT_WAITING",
+      "source_fact_ids": [
+        "A_TEST_EXPORT_DATE_UAT",
+        "FIX_ALPHA_104",
+        "RULE_ISSUE_CONFIRM_BEFORE_CREATE"
+      ],
+      "used_by_cases": [
+        "Q018"
+      ]
+    },
+    {
+      "fact_id": "SETUP_ALPHA_VIEWER_CONTEXT",
+      "kind": "read_only_prior_context",
+      "preconditions": {
+        "issue_draft_created": false,
+        "prior_read_only_context_available": true,
+        "sandbox_side_effect_count_delta": 0,
+        "user_alias": "u-alpha-viewer"
+      },
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "scenario_id": "SETUP_ALPHA_VIEWER_CONTEXT",
+      "source_fact_ids": [
+        "RULE_VIEWER_NO_ISSUE_WRITE"
+      ],
+      "used_by_cases": [
+        "Q037"
+      ]
+    },
+    {
+      "fact_id": "SETUP_ALPHA_CONFIRMED_CREATE",
+      "kind": "confirmed_issue_create_state",
+      "preconditions": {
+        "issue_draft_created": true,
+        "logical_request_id_template": "eval-v0-{case_id}-alpha-confirmed-create",
+        "payload_bound_confirmation_valid": true,
+        "request_id_is_fixed_within_case": true,
+        "sandbox_side_effect_count_delta_before_execution": 0
+      },
+      "project_code": "PRJ-RETAIL-ALPHA",
+      "scenario_id": "SETUP_ALPHA_CONFIRMED_CREATE",
+      "source_fact_ids": [
+        "RULE_ISSUE_CONFIRM_BEFORE_CREATE",
+        "RULE_ISSUE_IDEMPOTENT"
+      ],
+      "used_by_cases": [
+        "Q044",
+        "Q045"
+      ]
+    }
+  ],
+  "source_ref_note": "B1 freezes SETUP_* and FAULT_* facts under fixtures/fault-scenarios.json; therefore both setup_scenarios and fault_scenarios are materialized in this single authority file."
+}
