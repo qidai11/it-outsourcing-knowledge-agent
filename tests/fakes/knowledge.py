@@ -24,6 +24,7 @@ class FakeKnowledgePort:
         self.fail_delete = False
         self.ingested_requests: list[KnowledgeIngestionRequest] = []
         self.retrieval_requests: list[KnowledgeRetrievalRequest] = []
+        self.deleted_requests: list[DeleteKnowledgeDocumentRequest] = []
 
     async def ensure_space(self, request: EnsureKnowledgeSpaceRequest) -> KnowledgeSpace:
         key = (request.project_id, request.space_key)
@@ -70,6 +71,7 @@ class FakeKnowledgePort:
         return results[: request.limit]
 
     async def delete_document(self, request: DeleteKnowledgeDocumentRequest) -> None:
+        self.deleted_requests.append(request)
         if self.fail_delete:
             raise RuntimeError("simulated knowledge delete failure")
         self._chunks = [

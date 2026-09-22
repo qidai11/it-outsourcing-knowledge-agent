@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import Index, UniqueConstraint
 
-from project_agent.infrastructure.db.base import Base
 import project_agent.infrastructure.db.models  # noqa: F401
-
+from project_agent.infrastructure.db.base import Base
 
 REQUIRED_TABLES = {
     "clients",
@@ -48,7 +47,7 @@ def _unique_column_sets(table_name: str) -> set[tuple[str, ...]]:
 
 
 def test_required_tables_exist() -> None:
-    assert REQUIRED_TABLES <= set(Base.metadata.tables)
+    assert set(Base.metadata.tables) >= REQUIRED_TABLES
 
 
 def test_required_unique_constraints_exist() -> None:
@@ -93,6 +92,13 @@ def test_agent_runs_contains_prompt_usage_and_cost_fields() -> None:
     }
     assert expected <= columns
 
+
+
+def test_agent_runs_supports_ws2_runtime_envelope() -> None:
+    table = Base.metadata.tables["agent_runs"]
+    assert "business_mode" in table.columns
+    assert table.columns["business_mode"].nullable is True
+    assert table.columns["started_at"].nullable is True
 
 def test_governance_tables_exist_with_required_fields() -> None:
     system_config_columns = set(Base.metadata.tables["system_configs"].columns.keys())

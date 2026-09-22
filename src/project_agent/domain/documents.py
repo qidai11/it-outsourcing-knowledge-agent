@@ -53,5 +53,7 @@ def transition_document_status(
     target: DocumentLifecycleStatus,
 ) -> DocumentLifecycleStatus:
     if not can_transition_document(current, target):
-        raise InvalidDocumentTransition(f"document lifecycle transition {current} -> {target} is invalid")
+        raise InvalidDocumentTransition(
+            f"document lifecycle transition {current} -> {target} is invalid"
+        )
     return target

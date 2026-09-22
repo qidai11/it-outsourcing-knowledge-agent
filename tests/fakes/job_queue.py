@@ -14,8 +14,15 @@ class FakeJobQueue:
     def __init__(self) -> None:
         self._jobs: dict[str, QueuedJob] = {}
         self.heartbeats: list[tuple[str, str]] = []
+        self.enqueue_error: Exception | None = None
+
+    @property
+    def jobs(self) -> tuple[QueuedJob, ...]:
+        return tuple(self._jobs.values())
 
     async def enqueue(self, request: EnqueueJobRequest) -> QueuedJob:
+        if self.enqueue_error is not None:
+            raise self.enqueue_error
         job = QueuedJob(
             job_id=f"job-{uuid4().hex}",
             job_type=request.job_type,

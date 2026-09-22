@@ -18,7 +18,9 @@ class ProjectAccessPolicy:
         if request.project_id != context.project_code:
             raise AuthorizationDenied("retrieval project does not match authorized project")
 
-        allowed_versions = {str(value) for value in context.scope.allowed_document_version_ids or ()}
+        allowed_versions = {
+            str(value) for value in context.scope.allowed_document_version_ids or ()
+        }
         allowed_spaces = set(context.knowledge_space_ids)
         if not allowed_versions or not allowed_spaces:
             return None
@@ -49,7 +51,9 @@ class ProjectAccessPolicy:
         chunks: list[KnowledgeChunk],
         context: AuthorizedProjectContext,
     ) -> list[KnowledgeChunk]:
-        allowed_versions = {str(value) for value in context.scope.allowed_document_version_ids or ()}
+        allowed_versions = {
+            str(value) for value in context.scope.allowed_document_version_ids or ()
+        }
         allowed_spaces = set(context.knowledge_space_ids)
         if not allowed_versions or not allowed_spaces:
             return []

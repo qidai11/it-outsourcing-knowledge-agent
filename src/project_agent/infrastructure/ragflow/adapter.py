@@ -77,7 +77,7 @@ class RagflowAdapter:
         embedding_model: str | None = None,
         chunk_method: str = "naive",
         retry_policy: RagflowRetryPolicy | None = None,
-    ) -> "RagflowAdapter":
+    ) -> RagflowAdapter:
         return cls(
             RagflowHttpClient(http, api_key=api_key, retry_policy=retry_policy),
             object_store=object_store,
@@ -88,21 +88,15 @@ class RagflowAdapter:
     def space_ids_for_project(self, project_id: str) -> tuple[str, ...]:
         return tuple(sorted(self._project_to_spaces.get(project_id, set())))
 
+    def bind_authorized_space(self, *, project_id: str, dataset_id: str) -> None:
+        """Seed one DB-authorized dataset binding for Worker-side retrieval."""
+        self._bind_space(project_id, dataset_id)
+
     async def ensure_space(self, request: EnsureKnowledgeSpaceRequest) -> KnowledgeSpace:
         self._validate_baseline_binding(request.project_id, request.space_key)
-        data = await self._client.request_data(
-            "GET",
-            "/api/v1/datasets",
-            params={"name": request.space_key, "page": 1, "page_size": 30},
-        )
-        datasets = self._dataset_list(data)
-        exact = [
-            item
-            for item in datasets
-            if str(item.get("name", "")).casefold() == request.space_key.casefold()
-        ]
-        if exact:
-            dataset_id = self._required_string(exact[0], "id", context="dataset")
+        existing = await self._find_visible_dataset_by_name(request.space_key)
+        if existing is not None:
+            dataset_id = self._required_string(existing, "id", context="dataset")
         else:
             payload: dict[str, Any] = {
                 "name": request.space_key,
@@ -120,8 +114,37 @@ class RagflowAdapter:
         self._bind_space(request.project_id, dataset_id)
         return KnowledgeSpace(dataset_id, request.project_id, request.space_key)
 
+    async def _find_visible_dataset_by_name(self, name: str) -> dict[str, Any] | None:
+        target = name.casefold()
+        page = 1
+        page_size = 100
+        seen_ids: set[str] = set()
+        while True:
+            data = await self._client.request_data(
+                "GET",
+                "/api/v1/datasets",
+                params={"page": page, "page_size": page_size},
+            )
+            datasets = self._dataset_list(data)
+            for item in datasets:
+                if str(item.get("name", "")).casefold() == target:
+                    return item
+
+            if len(datasets) < page_size:
+                return None
+
+            page_ids = {
+                str(item.get("id"))
+                for item in datasets
+                if item.get("id") is not None
+            }
+            if page_ids and page_ids.issubset(seen_ids):
+                raise RagflowProtocolError("list datasets pagination did not advance")
+            seen_ids.update(page_ids)
+            page += 1
+
     async def ingest(self, request: KnowledgeIngestionRequest) -> KnowledgeIngestionReceipt:
-        self._assert_space_for_project(request.project_id, request.knowledge_space_id)
+        self._bind_space(request.project_id, request.knowledge_space_id)
         if self._object_store is None:
             raise RagflowConfigurationError("Knowledge ingestion requires an ObjectStorePort")
 
@@ -270,7 +293,7 @@ class RagflowAdapter:
         return result
 
     async def delete_document(self, request: DeleteKnowledgeDocumentRequest) -> None:
-        self._assert_space_for_project(request.project_id, request.knowledge_space_id)
+        self._bind_space(request.project_id, request.knowledge_space_id)
         documents = await self._list_documents(
             request.knowledge_space_id,
             metadata_condition={

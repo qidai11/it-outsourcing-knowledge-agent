@@ -39,10 +39,12 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
     company_id, client_id, project_id, user_id = uuid4(), uuid4(), uuid4(), uuid4()
     thread_id, run_id = uuid4(), uuid4()
     sandbox_project_id, existing_issue_id = uuid4(), uuid4()
+    evidence_ids = (str(uuid4()), str(uuid4()))
     now = datetime.now(UTC)
 
     async with sessions() as session:
         session.add(ClientModel(id=client_id, company_id=company_id, name="Issue Client"))
+        await session.flush()
         session.add(
             ProjectModel(
                 id=project_id,
@@ -54,6 +56,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 manager_id=user_id,
             )
         )
+        await session.flush()
         session.add(
             ThreadModel(
                 id=thread_id,
@@ -63,6 +66,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 title="Issue workflow test",
             )
         )
+        await session.flush()
         session.add(
             AgentRunModel(
                 id=run_id,
@@ -80,6 +84,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 name="Issue Sandbox",
             )
         )
+        await session.flush()
         session.add(
             SandboxIssueModel(
                 id=existing_issue_id,
@@ -110,6 +115,7 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
                 description="模块: import ERR-IMPORT-004 failed",
                 issue_type="bug",
                 proposed_priority="medium",
+                evidence_ids=evidence_ids,
             )
         )
         await repo.save_candidate_links(
@@ -133,6 +139,11 @@ async def test_postgres_issue_draft_confirmation_and_idempotency_barrier() -> No
         )
         await session.commit()
         assert receipt.request_payload_hash == prompt.request_payload_hash
+        assert prompt.evidence_ids == evidence_ids
+
+    async with sessions() as session:
+        persisted = await SqlAlchemyIssueWorkflowRepository(session).get_draft(draft.id)
+        assert persisted.evidence_ids == evidence_ids
 
     store = PostgresIdempotencyStore(sessions)
     first, created_first = await store.reserve(

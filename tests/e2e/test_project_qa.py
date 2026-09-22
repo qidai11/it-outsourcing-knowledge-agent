@@ -11,18 +11,30 @@ from project_agent.agent.graph import QAGraphDependencies, build_project_qa_grap
 from project_agent.agent.nodes.analyze_query import QueryAnalysisService
 from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
 from project_agent.agent.policies.access import ProjectAccessPolicy
-from project_agent.application.services.citation_guard import CitationGuard
-from project_agent.application.services.evidence_governance import DocumentEvidenceMetadata, EvidenceGovernanceService
 from project_agent.application.services.authorization import (
     AuthorizationService,
     DocumentAccessRecord,
     MembershipAccessRecord,
 )
+from project_agent.application.services.citation_guard import CitationGuard
+from project_agent.application.services.evidence_governance import (
+    DocumentEvidenceMetadata,
+    EvidenceGovernanceService,
+)
 from project_agent.application.services.identifier_extractor import IdentifierExtractor
 from project_agent.application.services.identifier_registry import IdentifierRegistryService
 from project_agent.application.services.prompt_config import PromptConfigRecord, PromptConfigService
-from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus, ProjectRole
-from project_agent.domain.identifiers import IdentifierRegistryEntry, IdentifierSource, IdentifierType
+from project_agent.domain.enums import (
+    AuthorityLevel,
+    DocumentCategory,
+    DocumentLifecycleStatus,
+    ProjectRole,
+)
+from project_agent.domain.identifiers import (
+    IdentifierRegistryEntry,
+    IdentifierSource,
+    IdentifierType,
+)
 from tests.fakes.authorization import FakeProjectAuthorizationRepository
 from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
 from tests.fakes.identifiers import FakeIdentifierRegistryRepository
@@ -125,6 +137,16 @@ def qa_fixture():
     )
 
     llm = FakeStructuredLLM()
+    llm.queue_response(
+        {
+            "adequate": True,
+            "reason": "ADEQUATE",
+            "second_round_justified": False,
+            "refined_query": None,
+        },
+        input_tokens=10,
+        output_tokens=2,
+    )
     llm.queue_response(
         {
             "claims": [
@@ -236,8 +258,8 @@ async def test_exact_identifier_qa_is_project_scoped_and_records_prompt_usage(qa
     telemetry = store.telemetry[run_id]
     assert telemetry.prompt_version == "3"
     assert telemetry.prompt_content_hash == "sha256-prompt-v3"
-    assert telemetry.input_tokens == 120
-    assert telemetry.output_tokens == 18
+    assert telemetry.input_tokens == 130
+    assert telemetry.output_tokens == 20
     assert telemetry.retrieval_rounds == 1
     assert "query_text" not in result
     assert "evidence" not in result
@@ -279,6 +301,14 @@ async def test_no_authorized_evidence_refuses_without_calling_llm(qa_fixture) ->
     store.seed_query(run_id, "PRJ-RETAIL-ALPHA 的 REQ-9.9.9 是什么？")
     qa_fixture["knowledge"]._chunks.clear()
     qa_fixture["llm"]._responses.clear()
+    qa_fixture["llm"].queue_response(
+        {
+            "adequate": False,
+            "reason": "EMPTY_EVIDENCE",
+            "second_round_justified": False,
+            "refined_query": None,
+        }
+    )
     graph = build_project_qa_graph(qa_fixture["deps"])
 
     result = await graph.ainvoke(
@@ -295,5 +325,124 @@ async def test_no_authorized_evidence_refuses_without_calling_llm(qa_fixture) ->
 
     assert result["route"] == "refusal"
     answer = store.answers[__import__("uuid").UUID(result["answer_id"])]
-    assert answer["refusal_reason"] == "NO_AUTHORIZED_EVIDENCE"
-    assert qa_fixture["llm"].calls == []
+    assert answer["refusal_reason"] == "INSUFFICIENT_EVIDENCE"
+    assert len(qa_fixture["knowledge"].retrieval_requests) == 1
+    assert [call.response_model_name for call in qa_fixture["llm"].calls] == [
+        "RetrievalGrade"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_second_round_refinement_keeps_identical_authorization_scope(qa_fixture) -> None:
+    run_id = uuid4()
+    thread_id = uuid4()
+    store = qa_fixture["store"]
+    store.seed_query(run_id, "PRJ-RETAIL-ALPHA 的 REQ-3.2.1 回滚流程是什么？")
+    qa_fixture["llm"]._responses.clear()
+    qa_fixture["llm"].calls.clear()
+    qa_fixture["llm"].queue_response(
+        {
+            "adequate": False,
+            "reason": "INSUFFICIENT_COVERAGE",
+            "second_round_justified": True,
+            "refined_query": "REQ-3.2.1 exact rollback procedure",
+        }
+    )
+    qa_fixture["llm"].queue_response(
+        {
+            "adequate": True,
+            "reason": "ADEQUATE",
+            "second_round_justified": False,
+            "refined_query": None,
+        }
+    )
+    qa_fixture["llm"].queue_response(
+        {
+            "claims": [
+                {
+                    "text": "连续登录失败 5 次后锁定账户 30 分钟。",
+                    "evidence_ids": ["E1"],
+                }
+            ],
+            "conflict_disclosure": None,
+        }
+    )
+    graph = build_project_qa_graph(qa_fixture["deps"])
+
+    result = await graph.ainvoke(
+        {
+            "run_id": str(run_id),
+            "thread_id": str(thread_id),
+            "user_id": str(qa_fixture["user_id"]),
+            "project_id": None,
+            "route": None,
+            "last_error_code": None,
+        },
+        config={"configurable": {"thread_id": str(thread_id)}},
+    )
+
+    assert result["route"] == "answered"
+    assert len(qa_fixture["knowledge"].retrieval_requests) == 2
+    first, second = qa_fixture["knowledge"].retrieval_requests
+    assert second.project_id == first.project_id
+    assert second.document_version_ids == first.document_version_ids
+    assert second.knowledge_space_ids == first.knowledge_space_ids
+    assert second.query == "REQ-3.2.1 exact rollback procedure"
+    assert second.query != first.query
+    assert store.telemetry[run_id].retrieval_rounds == 2
+    llm_calls = qa_fixture["llm"].calls
+    assert [call.response_model_name for call in llm_calls[:2]] == [
+        "RetrievalGrade",
+        "RetrievalGrade",
+    ]
+    assert len(llm_calls) == 3
+    assert llm_calls[2].request.request_id == f"{run_id}:qa-answer:0"
+
+
+@pytest.mark.asyncio
+async def test_second_round_inadequate_refuses_without_answer_generation(qa_fixture) -> None:
+    run_id = uuid4()
+    thread_id = uuid4()
+    store = qa_fixture["store"]
+    store.seed_query(run_id, "PRJ-RETAIL-ALPHA 的 REQ-3.2.1 还缺什么证据？")
+    qa_fixture["llm"]._responses.clear()
+    qa_fixture["llm"].calls.clear()
+    qa_fixture["llm"].queue_response(
+        {
+            "adequate": False,
+            "reason": "INSUFFICIENT_COVERAGE",
+            "second_round_justified": True,
+            "refined_query": "REQ-3.2.1 exact supporting evidence",
+        }
+    )
+    qa_fixture["llm"].queue_response(
+        {
+            "adequate": False,
+            "reason": "INSUFFICIENT_RELEVANCE",
+            "second_round_justified": False,
+            "refined_query": None,
+        }
+    )
+    graph = build_project_qa_graph(qa_fixture["deps"])
+
+    result = await graph.ainvoke(
+        {
+            "run_id": str(run_id),
+            "thread_id": str(thread_id),
+            "user_id": str(qa_fixture["user_id"]),
+            "project_id": None,
+            "route": None,
+            "last_error_code": None,
+        },
+        config={"configurable": {"thread_id": str(thread_id)}},
+    )
+
+    assert result["route"] == "refusal"
+    answer = store.answers[__import__("uuid").UUID(result["answer_id"])]
+    assert answer["refusal_reason"] == "INSUFFICIENT_EVIDENCE"
+    assert len(qa_fixture["knowledge"].retrieval_requests) == 2
+    assert store.telemetry[run_id].retrieval_rounds == 2
+    assert [call.response_model_name for call in qa_fixture["llm"].calls] == [
+        "RetrievalGrade",
+        "RetrievalGrade",
+    ]

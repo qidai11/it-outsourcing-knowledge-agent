@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from project_agent.application.ports.knowledge import (
+    DeleteKnowledgeDocumentRequest,
     EnsureKnowledgeSpaceRequest,
     IngestionState,
     KnowledgeIngestionRequest,
@@ -106,3 +107,83 @@ async def test_ingest_uploads_metadata_before_parse_and_status_maps_done() -> No
     assert calls.index(("PUT", "/api/v1/datasets/dataset-alpha/documents/doc-alpha")) < calls.index(
         ("POST", "/api/v1/datasets/dataset-alpha/chunks")
     )
+
+
+@pytest.mark.asyncio
+async def test_fresh_adapter_ingest_binds_dataset_and_rejects_cross_project_reuse() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/api/v1/datasets/dataset-a/documents":
+            return httpx.Response(200, json={"code": 0, "data": [{"id": "doc-a"}]})
+        if (
+            request.method == "PUT"
+            and request.url.path == "/api/v1/datasets/dataset-a/documents/doc-a"
+        ):
+            return httpx.Response(200, json={"code": 0, "data": {"id": "doc-a"}})
+        if request.method == "POST" and request.url.path == "/api/v1/datasets/dataset-a/chunks":
+            return httpx.Response(200, json={"code": 0})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    async with httpx.AsyncClient(
+        base_url="http://ragflow.local",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        adapter = RagflowAdapter.from_http_client(
+            http,
+            api_key="secret",
+            object_store=StubObjectStore(),
+        )
+        request = KnowledgeIngestionRequest(
+            project_id="PRJ-RETAIL-ALPHA",
+            knowledge_space_id="dataset-a",
+            document_version_id="version-alpha-1",
+            object_key="objects/source-1",
+            metadata={"filename": "alpha.txt"},
+        )
+        await adapter.ingest(request)
+        assert adapter.space_ids_for_project("PRJ-RETAIL-ALPHA") == ("dataset-a",)
+
+        from project_agent.infrastructure.ragflow.errors import RagflowProjectIsolationError
+
+        with pytest.raises(RagflowProjectIsolationError):
+            await adapter.ingest(
+                KnowledgeIngestionRequest(
+                    project_id="PRJ-LOGISTICS-BETA",
+                    knowledge_space_id="dataset-a",
+                    document_version_id="version-beta-1",
+                    object_key="objects/source-1",
+                    metadata={"filename": "beta.txt"},
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_fresh_adapter_delete_binds_dataset_and_rejects_cross_project_reuse() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/datasets/dataset-a/documents":
+            return httpx.Response(200, json={"code": 0, "data": {"docs": []}})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    async with httpx.AsyncClient(
+        base_url="http://ragflow.local",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        adapter = RagflowAdapter.from_http_client(http, api_key="secret")
+        await adapter.delete_document(
+            DeleteKnowledgeDocumentRequest(
+                project_id="PRJ-RETAIL-ALPHA",
+                document_version_id="version-alpha-1",
+                knowledge_space_id="dataset-a",
+            )
+        )
+        assert adapter.space_ids_for_project("PRJ-RETAIL-ALPHA") == ("dataset-a",)
+
+        from project_agent.infrastructure.ragflow.errors import RagflowProjectIsolationError
+
+        with pytest.raises(RagflowProjectIsolationError):
+            await adapter.delete_document(
+                DeleteKnowledgeDocumentRequest(
+                    project_id="PRJ-LOGISTICS-BETA",
+                    document_version_id="version-beta-1",
+                    knowledge_space_id="dataset-a",
+                )
+            )

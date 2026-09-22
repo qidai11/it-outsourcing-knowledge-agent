@@ -37,6 +37,7 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
 
     async with sessions() as session:
         session.add(ClientModel(id=client_id, company_id=company_id, name="Citation Client"))
+        await session.flush()
         session.add(ProjectModel(
             id=project_id,
             company_id=company_id,
@@ -46,6 +47,7 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
             phase="test",
             manager_id=user_id,
         ))
+        await session.flush()
         doc = DocumentModel(
             company_id=company_id,
             project_id=project_id,
@@ -70,6 +72,7 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
             project_id=project_id,
             user_id=user_id,
         ))
+        await session.flush()
         session.add(AgentRunModel(
             id=run_id,
             thread_id=thread_id,
@@ -116,7 +119,12 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
         answer_id = await store.save_grounded_answer(
             run_id=run_id,
             answer_text="锁定 30 分钟。 [E1]",
-            citations=(CitationReference(citation_no=1, evidence_snapshot_id=frozen.evidence[0].snapshot_id),),
+            citations=(
+                CitationReference(
+                    citation_no=1,
+                    evidence_snapshot_id=frozen.evidence[0].snapshot_id,
+                ),
+            ),
         )
         await session.commit()
         citation = (
@@ -137,7 +145,9 @@ async def test_governed_snapshot_and_citation_reference_are_persisted() -> None:
         assert reloaded.evidence[0].document_version_id == version_id
 
     async with sessions() as session:
-        await session.execute(CitationModel.__table__.delete().where(CitationModel.answer_id == answer_id))
+        await session.execute(
+            CitationModel.__table__.delete().where(CitationModel.answer_id == answer_id)
+        )
         # Answer/evidence/event rows cascade from run where applicable.
         await session.execute(AgentRunModel.__table__.delete().where(AgentRunModel.id == run_id))
         await session.execute(ThreadModel.__table__.delete().where(ThreadModel.id == thread_id))

@@ -11,7 +11,6 @@ from project_agent.infrastructure.object_store.local import (
     ObjectStoreSecurityError,
 )
 
-
 FIXED_UUID = UUID("33333333-3333-4333-8333-333333333333")
 
 

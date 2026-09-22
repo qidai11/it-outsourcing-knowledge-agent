@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from project_agent.application.ports.job_queue import EnqueueJobRequest, JobQueuePort, JobState
+from project_agent.application.ports.job_queue import (
+    EnqueueJobRequest,
+    JobEnqueuePort,
+    JobQueuePort,
+    JobState,
+)
 from tests.fakes.job_queue import FakeJobQueue
 
 
@@ -37,3 +42,27 @@ async def test_fake_job_queue_does_not_claim_same_job_twice() -> None:
 
     assert len(first) == 1
     assert second == []
+
+
+@pytest.mark.asyncio
+async def test_fake_queue_satisfies_enqueue_only_port() -> None:
+    queue = FakeJobQueue()
+    assert isinstance(queue, JobEnqueuePort)
+    created = await queue.enqueue(
+        EnqueueJobRequest(job_type="EXECUTE_AGENT_RUN", aggregate_id="run-1")
+    )
+    assert created.aggregate_id == "run-1"
+    assert queue.jobs == (created,)
+
+
+@pytest.mark.asyncio
+async def test_fake_queue_can_fail_before_storing_a_job() -> None:
+    queue = FakeJobQueue()
+    queue.enqueue_error = RuntimeError("enqueue failed")
+
+    with pytest.raises(RuntimeError, match="enqueue failed"):
+        await queue.enqueue(
+            EnqueueJobRequest(job_type="EXECUTE_AGENT_RUN", aggregate_id="run-1")
+        )
+
+    assert queue.jobs == ()

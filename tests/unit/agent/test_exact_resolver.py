@@ -3,13 +3,17 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from tests.fakes.identifiers import FakeIdentifierRegistryRepository
 
-from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
 from project_agent.agent.nodes.analyze_query import QueryAnalysisService
+from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
 from project_agent.application.services.identifier_extractor import IdentifierExtractor
 from project_agent.application.services.identifier_registry import IdentifierRegistryService
-from project_agent.domain.identifiers import IdentifierRegistryEntry, IdentifierSource, IdentifierType
-from tests.fakes.identifiers import FakeIdentifierRegistryRepository
+from project_agent.domain.identifiers import (
+    IdentifierRegistryEntry,
+    IdentifierSource,
+    IdentifierType,
+)
 
 
 @pytest.mark.asyncio

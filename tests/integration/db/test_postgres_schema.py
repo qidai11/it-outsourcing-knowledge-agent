@@ -3,9 +3,8 @@ from __future__ import annotations
 import os
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
-
 
 RUN_POSTGRES_INTEGRATION = os.getenv("RUN_POSTGRES_INTEGRATION") == "1"
 
@@ -21,7 +20,9 @@ async def test_migrated_postgres_contains_gate2_schema() -> None:
 
     try:
         async with engine.connect() as connection:
-            def inspect_schema(sync_connection: object) -> tuple[set[str], tuple[str, ...] | None]:
+            def inspect_schema(
+                sync_connection: object,
+            ) -> tuple[set[str], tuple[str, ...] | None, dict[str, bool]]:
                 inspector = inspect(sync_connection)
                 tables = set(inspector.get_table_names())
                 exact_index_columns: tuple[str, ...] | None = None
@@ -29,9 +30,18 @@ async def test_migrated_postgres_contains_gate2_schema() -> None:
                     if index["name"] == "idx_identifier_exact":
                         exact_index_columns = tuple(index["column_names"])
                         break
-                return tables, exact_index_columns
+                agent_run_columns = {
+                    str(column["name"]): bool(column["nullable"])
+                    for column in inspector.get_columns("agent_runs")
+                }
+                return tables, exact_index_columns, agent_run_columns
 
-            tables, exact_index_columns = await connection.run_sync(inspect_schema)
+            tables, exact_index_columns, agent_run_columns = await connection.run_sync(
+                inspect_schema
+            )
+            alembic_version = await connection.scalar(
+                text("SELECT version_num FROM alembic_version")
+            )
 
         assert {
             "clients",
@@ -69,5 +79,8 @@ async def test_migrated_postgres_contains_gate2_schema() -> None:
             "identifier_type",
             "normalized_value",
         )
+        assert "business_mode" in agent_run_columns
+        assert agent_run_columns["started_at"] is True
+        assert alembic_version == "0005_run_runtime_envelope"
     finally:
         await engine.dispose()

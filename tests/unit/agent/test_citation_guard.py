@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
 from uuid import uuid4
 
 from project_agent.agent.nodes.models import GroundedAnswerDraft
@@ -10,7 +9,9 @@ from project_agent.domain.enums import AuthorityLevel, DocumentCategory, Documen
 from project_agent.domain.evidence import FrozenEvidence, FrozenEvidenceBundle
 
 
-def _evidence(label: str, *, project_id=None, conflict_key=None, unresolved=False) -> FrozenEvidence:
+def _evidence(
+    label: str, *, project_id=None, conflict_key=None, unresolved=False
+) -> FrozenEvidence:
     return FrozenEvidence(
         snapshot_id=uuid4(),
         label=label,
@@ -57,7 +58,10 @@ def test_valid_claim_citations_have_full_coverage() -> None:
 
 def test_unknown_citation_id_is_rejected() -> None:
     project_id = uuid4()
-    bundle = FrozenEvidenceBundle(evidence=(_evidence("E1", project_id=project_id),), unresolved_conflicts={})
+    bundle = FrozenEvidenceBundle(
+        evidence=(_evidence("E1", project_id=project_id),),
+        unresolved_conflicts={},
+    )
     draft = GroundedAnswerDraft.model_validate({
         "claims": [{"text": "事实", "evidence_ids": ["E99"]}],
         "conflict_disclosure": None,
@@ -71,7 +75,10 @@ def test_unknown_citation_id_is_rejected() -> None:
 
 def test_claim_without_citation_is_rejected() -> None:
     project_id = uuid4()
-    bundle = FrozenEvidenceBundle(evidence=(_evidence("E1", project_id=project_id),), unresolved_conflicts={})
+    bundle = FrozenEvidenceBundle(
+        evidence=(_evidence("E1", project_id=project_id),),
+        unresolved_conflicts={},
+    )
     draft = GroundedAnswerDraft.model_validate({
         "claims": [{"text": "事实", "evidence_ids": []}],
         "conflict_disclosure": None,
@@ -116,6 +123,9 @@ def test_unresolved_conflict_requires_disclosure_citing_both_sides() -> None:
 
     disclosed = GroundedAnswerDraft.model_validate({
         "claims": [{"text": "当前证据存在冲突。", "evidence_ids": ["E1", "E2"]}],
-        "conflict_disclosure": {"text": "E1 与 E2 对锁定时长存在冲突，无法确定唯一值。", "evidence_ids": ["E1", "E2"]},
+        "conflict_disclosure": {
+            "text": "E1 与 E2 对锁定时长存在冲突，无法确定唯一值。",
+            "evidence_ids": ["E1", "E2"],
+        },
     })
     assert CitationGuard().validate(disclosed, bundle=bundle, project_id=project_id).valid is True

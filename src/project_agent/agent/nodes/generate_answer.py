@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from project_agent.agent.nodes.models import GroundedAnswerDraft
 from project_agent.agent.state import AgentState
 from project_agent.application.ports.llm import (
@@ -11,6 +13,27 @@ from project_agent.application.ports.llm import (
 )
 from project_agent.application.ports.qa_graph import QAGraphStorePort
 from project_agent.domain.evidence import FrozenEvidenceBundle
+
+
+class _StructuredAnswerClaim(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+
+
+class _StructuredConflictDisclosure(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+
+
+class _StructuredGroundedAnswerDraft(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claims: tuple[_StructuredAnswerClaim, ...] = Field(min_length=1)
+    conflict_disclosure: _StructuredConflictDisclosure | None
 
 
 def _build_grounded_evidence_prompt(query: str, bundle: FrozenEvidenceBundle) -> str:
@@ -73,7 +96,7 @@ async def _generate_draft(
             + "\n- ".join(revision_errors)
         )
     request_id = f"{run_id}:qa-answer:{revision_no}"
-    response = await llm.generate(
+    structured_response = await llm.generate(
         StructuredLLMRequest(
             request_id=request_id,
             model_alias=model_alias,
@@ -82,7 +105,10 @@ async def _generate_draft(
             temperature=0.0,
             metadata={"run_id": str(run_id), "project_id": str(state["project_id"])},
         ),
-        GroundedAnswerDraft,
+        _StructuredGroundedAnswerDraft,
+    )
+    draft = GroundedAnswerDraft.model_validate(
+        structured_response.model_dump(mode="json")
     )
     usage = await llm_usage.get_usage(request_id)
     await store.record_llm_usage(
@@ -93,7 +119,7 @@ async def _generate_draft(
     draft_id = await store.save_artifact(
         run_id=run_id,
         artifact_type="ANSWER_DRAFT",
-        payload=response.model_dump(mode="json"),
+        payload=draft.model_dump(mode="json"),
     )
     return draft_id, request_id
 

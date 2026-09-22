@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from tests.fakes.authorization import FakeProjectAuthorizationRepository
 
 from project_agent.agent.nodes.analyze_query import QueryAnalysisService
 from project_agent.agent.nodes.select_project import ProjectSelectionService
@@ -14,7 +15,6 @@ from project_agent.application.services.authorization import (
 )
 from project_agent.application.services.identifier_extractor import IdentifierExtractor
 from project_agent.domain.enums import ProjectRole
-from tests.fakes.authorization import FakeProjectAuthorizationRepository
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,8 @@ async def test_query_project_code_selects_only_authorized_project() -> None:
 
 
 @pytest.mark.asyncio
-async def test_explicit_project_id_conflicting_with_query_project_code_is_not_silently_accepted() -> None:
+async def test_explicit_project_id_conflicting_with_query_project_code_is_not_silently_accepted(
+) -> None:
     now = datetime(2026, 8, 8, tzinfo=UTC)
     user_id = uuid4()
     alpha_id = uuid4()

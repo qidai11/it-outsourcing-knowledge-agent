@@ -9,15 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from project_agent.application.ports.knowledge import KnowledgeChunk
 from project_agent.application.services.prompt_config import PromptSnapshot
 from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus
-from project_agent.domain.evidence import CitationReference, FrozenEvidence, FrozenEvidenceBundle, GovernedEvidencePack
+from project_agent.domain.evidence import (
+    CitationReference,
+    FrozenEvidence,
+    FrozenEvidenceBundle,
+    GovernedEvidencePack,
+)
+from project_agent.domain.runs import AgentEventType
 from project_agent.infrastructure.db.models.schema import (
     AgentEventModel,
     AgentRunModel,
-    CitationModel,
     AnswerModel,
+    CitationModel,
     EvidenceBundleModel,
     EvidenceSnapshotModel,
 )
+from project_agent.observability.cost import current_cost_policy
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 class SqlAlchemyQAGraphStore:
@@ -35,17 +44,19 @@ class SqlAlchemyQAGraphStore:
             select(AgentEventModel.payload_json)
             .where(
                 AgentEventModel.run_id == run_id,
-                AgentEventModel.event_type == "USER_QUERY",
+                AgentEventModel.event_type.in_(
+                    [AgentEventType.RUN_QUEUED.value, "USER_QUERY"]
+                ),
             )
             .order_by(AgentEventModel.sequence_no)
             .limit(1)
         )
         payload = (await self._session.execute(stmt)).scalar_one_or_none()
         if not isinstance(payload, dict):
-            raise LookupError(f"run {run_id} has no USER_QUERY event")
+            raise LookupError(f"run {run_id} has no durable query event")
         query = payload.get("query_text", payload.get("query"))
         if not isinstance(query, str) or not query.strip():
-            raise ValueError(f"run {run_id} USER_QUERY event is missing query text")
+            raise ValueError(f"run {run_id} durable query event is missing query text")
         return query
 
     async def _next_sequence(self, run_id: UUID) -> int:
@@ -67,8 +78,11 @@ class SqlAlchemyQAGraphStore:
         event = AgentEventModel(
             run_id=run_id,
             sequence_no=await self._next_sequence(run_id),
-            event_type=artifact_type,
-            payload_json=payload,
+            event_type=AgentEventType.ARTIFACT_AVAILABLE.value,
+            payload_json={
+                "artifact_type": artifact_type,
+                "artifact": dict(payload),
+            },
         )
         self._session.add(event)
         await self._session.flush()
@@ -78,7 +92,13 @@ class SqlAlchemyQAGraphStore:
         event = await self._session.get(AgentEventModel, artifact_id)
         if event is None:
             raise LookupError(f"graph artifact does not exist: {artifact_id}")
-        return dict(event.payload_json)
+        payload = dict(event.payload_json)
+        if event.event_type == AgentEventType.ARTIFACT_AVAILABLE.value:
+            artifact = payload.get("artifact")
+            if not isinstance(artifact, dict):
+                raise ValueError(f"graph artifact {artifact_id} has invalid event payload")
+            return dict(artifact)
+        return payload
 
     async def record_prompt_snapshot(
         self,
@@ -119,12 +139,30 @@ class SqlAlchemyQAGraphStore:
         run.input_tokens += input_tokens
         run.output_tokens += output_tokens
         run.total_tokens += input_tokens + output_tokens
+        estimate = current_cost_policy().estimate(
+            input_tokens=run.input_tokens,
+            output_tokens=run.output_tokens,
+        )
+        run.estimated_cost_microunits = estimate.microunits
+        run.cost_currency = estimate.currency
+        get_logger().info(
+            "llm_usage_recorded",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            estimated_cost_microunits=estimate.microunits,
+            currency=estimate.currency,
+            cost_estimate_configured=estimate.configured,
+        )
 
     async def increment_retrieval_rounds(self, *, run_id: UUID) -> None:
         run = await self._session.get(AgentRunModel, run_id, with_for_update=True)
         if run is None:
             raise LookupError(f"agent run does not exist: {run_id}")
         run.retrieval_rounds += 1
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.increment_retrieval_round()
 
     async def save_evidence_bundle(
         self,
@@ -314,14 +352,18 @@ class SqlAlchemyQAGraphStore:
                     ),
                     provider_ref=row.source_ref,
                     page_no=(
-                        int(metadata["page_no"]) if isinstance(metadata.get("page_no"), int) else None
+                        int(metadata["page_no"])
+                        if isinstance(metadata.get("page_no"), int)
+                        else None
                     ),
                     section=(
                         str(metadata["section"]) if metadata.get("section") is not None else None
                     ),
                     conflict_key=str(conflict_key) if conflict_key is not None else None,
                     claim_value=(
-                        str(metadata["claim_value"]) if metadata.get("claim_value") is not None else None
+                        str(metadata["claim_value"])
+                        if metadata.get("claim_value") is not None
+                        else None
                     ),
                     unresolved_conflict=unresolved,
                 )

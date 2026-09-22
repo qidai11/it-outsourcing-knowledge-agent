@@ -90,7 +90,10 @@ class EvidenceGovernanceService:
             info = metadata.get(version_id)
             if info is None or info.project_id != project_id:
                 continue
-            if info.lifecycle_status is not DocumentLifecycleStatus.PUBLISHED or not info.is_current:
+            if (
+                info.lifecycle_status is not DocumentLifecycleStatus.PUBLISHED
+                or not info.is_current
+            ):
                 continue
             if info.effective_from is not None and info.effective_from > today:
                 continue
@@ -196,7 +199,11 @@ class EvidenceGovernanceService:
                 result.extend(values)
                 continue
             best_rank = min(self._AUTHORITY_RANK[item.authority_level] for item in values)
-            top = [item for item in values if self._AUTHORITY_RANK[item.authority_level] == best_rank]
+            top = [
+                item
+                for item in values
+                if self._AUTHORITY_RANK[item.authority_level] == best_rank
+            ]
             top_values = {item.claim_value for item in top}
             if len(top_values) == 1:
                 result.extend(top)

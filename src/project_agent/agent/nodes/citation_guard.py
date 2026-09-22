@@ -7,6 +7,8 @@ from project_agent.agent.state import AgentState
 from project_agent.application.ports.qa_graph import QAGraphStorePort
 from project_agent.application.services.citation_guard import CitationGuard
 from project_agent.domain.evidence import CitationReference
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 
 
 def _render_answer(draft: GroundedAnswerDraft) -> str:
@@ -43,7 +45,11 @@ async def citation_guard_node(
             "used_evidence_ids": list(result.used_evidence_ids),
         },
     )
+    metrics = current_metrics()
     if result.valid:
+        if metrics is not None:
+            metrics.observe_citation(outcome="pass")
+        get_logger().info("citation_guard_passed", outcome="pass", coverage=result.coverage)
         evidence_by_label = {item.label: item for item in bundle.evidence}
         citations = tuple(
             CitationReference(
@@ -64,11 +70,17 @@ async def citation_guard_node(
             "last_error_code": None,
         }
     if int(state.get("revision_count", 0)) < 1:
+        if metrics is not None:
+            metrics.observe_citation(outcome="revision")
+        get_logger().info("citation_guard_revision", outcome="revision", coverage=result.coverage)
         return {
             "citation_guard_id": str(guard_id),
             "route": "revise_answer",
             "last_error_code": "CITATION_GUARD_RETRY",
         }
+    if metrics is not None:
+        metrics.observe_citation(outcome="refusal")
+    get_logger().info("citation_guard_refused", outcome="refusal", coverage=result.coverage)
     return {
         "citation_guard_id": str(guard_id),
         "route": "refusal",

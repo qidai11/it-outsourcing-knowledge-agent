@@ -8,6 +8,7 @@ from project_agent.agent.nodes.citation_guard import citation_guard_node
 from project_agent.agent.nodes.clarify import clarify_project_node
 from project_agent.agent.nodes.generate_answer import generate_answer_node
 from project_agent.agent.nodes.govern_evidence import govern_evidence_node
+from project_agent.agent.nodes.grade_retrieval import grade_retrieval_node
 from project_agent.agent.nodes.identifier_node import resolve_identifiers_node
 from project_agent.agent.nodes.load_prompt import load_prompt_snapshot_node
 from project_agent.agent.nodes.query_analysis_node import analyze_query_node
@@ -26,6 +27,7 @@ from project_agent.application.services.authorization import AuthorizationServic
 from project_agent.application.services.citation_guard import CitationGuard
 from project_agent.application.services.evidence_governance import EvidenceGovernanceService
 from project_agent.application.services.prompt_config import PromptConfigService
+from project_agent.observability.metrics import ObservedStructuredLLM
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +56,16 @@ def _after_project_selection(state: AgentState) -> str:
 
 
 def _after_retrieval(state: AgentState) -> str:
-    return "govern_evidence" if state.get("route") == "answer" else "refuse"
+    return "grade_retrieval" if state.get("route") == "grade_retrieval" else "refuse"
+
+
+def _after_retrieval_grade(state: AgentState) -> str:
+    route = state.get("route")
+    if route == "govern_evidence":
+        return "govern_evidence"
+    if route == "retrieve_again":
+        return "retrieve"
+    return "refuse"
 
 
 def _after_governance(state: AgentState) -> str:
@@ -83,6 +94,13 @@ def build_project_qa_graph(
         raise RuntimeError("langgraph is required to compile the QA graph") from exc
 
     builder = StateGraph(AgentState)
+    observed_llm: ObservedStructuredLLM | None = None
+
+    def get_observed_llm() -> ObservedStructuredLLM:
+        nonlocal observed_llm
+        if observed_llm is None:
+            observed_llm = ObservedStructuredLLM(deps.llm, deps.llm_usage)
+        return observed_llm
 
     async def load_prompt(state: AgentState) -> AgentState:
         return await load_prompt_snapshot_node(
@@ -128,6 +146,16 @@ def build_project_qa_graph(
             store=deps.store,
         )
 
+    async def grade_retrieval(state: AgentState) -> AgentState:
+        llm = get_observed_llm()
+        return await grade_retrieval_node(
+            state,
+            llm=llm,
+            llm_usage=llm,
+            store=deps.store,
+            model_alias=deps.model_alias,
+        )
+
     async def govern(state: AgentState) -> AgentState:
         return await govern_evidence_node(
             state,
@@ -136,10 +164,11 @@ def build_project_qa_graph(
         )
 
     async def answer(state: AgentState) -> AgentState:
+        llm = get_observed_llm()
         return await generate_answer_node(
             state,
-            llm=deps.llm,
-            llm_usage=deps.llm_usage,
+            llm=llm,
+            llm_usage=llm,
             store=deps.store,
             model_alias=deps.model_alias,
         )
@@ -152,10 +181,11 @@ def build_project_qa_graph(
         )
 
     async def revise(state: AgentState) -> AgentState:
+        llm = get_observed_llm()
         return await revise_answer_node(
             state,
-            llm=deps.llm,
-            llm_usage=deps.llm_usage,
+            llm=llm,
+            llm_usage=llm,
             store=deps.store,
             model_alias=deps.model_alias,
         )
@@ -172,6 +202,7 @@ def build_project_qa_graph(
     builder.add_node("resolve_scope", scope)
     builder.add_node("resolve_identifiers", identifiers)
     builder.add_node("retrieve", retrieve)
+    builder.add_node("grade_retrieval", grade_retrieval)
     builder.add_node("govern_evidence", govern)
     builder.add_node("generate_answer", answer)
     builder.add_node("citation_guard", guard_citations)
@@ -197,7 +228,16 @@ def build_project_qa_graph(
         "retrieve",
         _after_retrieval,
         {
+            "grade_retrieval": "grade_retrieval",
+            "refuse": "refuse",
+        },
+    )
+    builder.add_conditional_edges(
+        "grade_retrieval",
+        _after_retrieval_grade,
+        {
             "govern_evidence": "govern_evidence",
+            "retrieve": "retrieve",
             "refuse": "refuse",
         },
     )

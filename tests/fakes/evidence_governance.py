@@ -12,4 +12,8 @@ class FakeEvidenceGovernanceRepository:
     async def get_document_evidence_metadata(
         self, *, document_version_ids: tuple[UUID, ...]
     ) -> dict[UUID, DocumentEvidenceMetadata]:
-        return {value: self.records[value] for value in document_version_ids if value in self.records}
+        return {
+            value: self.records[value]
+            for value in document_version_ids
+            if value in self.records
+        }

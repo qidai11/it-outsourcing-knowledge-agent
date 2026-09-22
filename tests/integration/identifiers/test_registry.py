@@ -20,7 +20,6 @@ from project_agent.infrastructure.db.repositories.identifiers import (
     SqlAlchemyIdentifierRegistryRepository,
 )
 
-
 RUN_POSTGRES_INTEGRATION = os.getenv("RUN_POSTGRES_INTEGRATION") == "1"
 
 
@@ -56,7 +55,9 @@ async def test_postgres_registry_exact_lookup_and_trigram_suggestion() -> None:
 
     async with session_factory() as session:
         try:
-            session.add_all([client, alpha, beta])
+            session.add(client)
+            await session.flush()
+            session.add_all([alpha, beta])
             await session.flush()
 
             alpha_doc = DocumentModel(

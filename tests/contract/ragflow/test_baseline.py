@@ -1,6 +1,6 @@
 from project_agent.infrastructure.ragflow.baseline import (
-    RAGFLOW_STABLE_VERSION,
     BASELINE_DATASET_BINDINGS,
+    RAGFLOW_STABLE_VERSION,
 )
 
 

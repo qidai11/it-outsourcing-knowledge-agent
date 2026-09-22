@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from tests.fakes.issue_workflow import FakeIssueWorkflowRepository
 
 from project_agent.agent.nodes.confirm_issue_create import confirm_issue_create_node
 from project_agent.application.services.issue_confirmation import IssueConfirmationService
 from project_agent.application.services.issue_drafts import IssueDraftService
-from tests.fakes.issue_workflow import FakeIssueWorkflowRepository
 
 
 class Paused(RuntimeError):

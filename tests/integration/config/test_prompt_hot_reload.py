@@ -124,6 +124,8 @@ async def test_prompt_hot_reload_reads_latest_enabled_system_config_from_postgre
             assert run_b.content == "v2"
     finally:
         async with factory() as session:
-            await session.execute(delete(SystemConfigModel).where(SystemConfigModel.config_key == key))
+            await session.execute(
+                delete(SystemConfigModel).where(SystemConfigModel.config_key == key)
+            )
             await session.commit()
         await engine.dispose()

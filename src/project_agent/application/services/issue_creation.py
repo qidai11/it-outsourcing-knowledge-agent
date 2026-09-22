@@ -7,13 +7,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from project_agent.application.ports.issue_workflow import IdempotencyStorePort, IssueWorkflowRepository
+from project_agent.application.ports.issue_workflow import (
+    IdempotencyStorePort,
+    IssueWorkflowRepository,
+)
 from project_agent.application.ports.job_queue import EnqueueJobRequest, JobQueuePort
 from project_agent.application.ports.project_tracker import CreatedIssue, ProjectTrackerPort
 from project_agent.application.services.authorization import AuthorizationService
 from project_agent.application.services.issue_drafts import IssueDraftService
 from project_agent.domain.enums import ProjectRole
 from project_agent.domain.issues import IdempotencyStatus, IssueDraftStatus, ToolConfirmationStatus
+from project_agent.observability.logging import get_logger
+from project_agent.observability.metrics import current_metrics
 from project_agent.workers.handlers import RECONCILE_ISSUE_CREATE
 
 
@@ -51,6 +56,10 @@ class IssueWritePolicy:
 
     def assert_can_create(self, role_ids: tuple[str, ...]) -> None:
         if not self.ALLOWED_ROLES.intersection(role_ids):
+            metrics = current_metrics()
+            if metrics is not None:
+                metrics.observe_authorization_denial(reason="role_denied")
+            get_logger().info("authorization_denied", reason="role_denied")
             raise IssueCreationDenied("current project role cannot create issues")
 
 
@@ -79,6 +88,21 @@ class IssueCreationService:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def execute(
+        self,
+        *,
+        draft_id: UUID,
+        confirmation_id: UUID,
+        actor_id: UUID,
+    ) -> IssueCreationOutcome:
+        try:
+            return await self._execute(
+                draft_id=draft_id, confirmation_id=confirmation_id, actor_id=actor_id
+            )
+        except IssueCreationDenied:
+            _observe_issue_create("denied")
+            raise
+
+    async def _execute(
         self,
         *,
         draft_id: UUID,
@@ -141,11 +165,13 @@ class IssueCreationService:
                     status=IssueCreationStatus.ALREADY_CREATED,
                 )
             await self._enqueue_reconciliation(draft.id)
-            return IssueCreationOutcome(
+            outcome = IssueCreationOutcome(
                 status=IssueCreationStatus.PENDING_RECONCILIATION,
                 draft_id=draft.id,
                 request_id=request.request_id,
             )
+            _observe_issue_create("pending_reconciliation")
+            return outcome
 
         existing = await self._tracker.get_issue_by_request_id(
             request.project_id, request.request_id
@@ -162,11 +188,13 @@ class IssueCreationService:
             created = await self._tracker.create_issue(request)
         except (TimeoutError, OSError):
             await self._enqueue_reconciliation(draft.id)
-            return IssueCreationOutcome(
+            outcome = IssueCreationOutcome(
                 status=IssueCreationStatus.PENDING_RECONCILIATION,
                 draft_id=draft.id,
                 request_id=request.request_id,
             )
+            _observe_issue_create("pending_reconciliation")
+            return outcome
         return await self._complete(
             draft_id=draft.id,
             request_id=request.request_id,
@@ -182,6 +210,7 @@ class IssueCreationService:
             request_id=request.request_id,
         )
         if record is None:
+            _observe_issue_create("denied")
             raise IssueCreationDenied(
                 "reconciliation requires a prior confirmed idempotency barrier"
             )
@@ -225,6 +254,7 @@ class IssueCreationService:
             response=response,
         )
         await self._workflow_repo.set_draft_status(draft_id, IssueDraftStatus.CREATED)
+        _observe_issue_create(status.value.lower())
         return IssueCreationOutcome(
             status=status,
             draft_id=draft_id,
@@ -233,8 +263,8 @@ class IssueCreationService:
             issue_status=created.status,
         )
 
-    @staticmethod
     def _outcome_from_record(
+        self,
         response: dict[str, object] | None,
         draft_id: UUID,
         request_id: str,
@@ -242,6 +272,7 @@ class IssueCreationService:
     ) -> IssueCreationOutcome:
         if not response:
             raise RuntimeError("completed idempotency record has no response")
+        _observe_issue_create(status.value.lower())
         return IssueCreationOutcome(
             status=status,
             draft_id=draft_id,
@@ -258,3 +289,24 @@ class IssueCreationService:
                 max_attempts=5,
             )
         )
+
+
+def _observe_issue_create(outcome: str) -> None:
+    metrics = current_metrics()
+    if metrics is not None:
+        if outcome == "created":
+            metrics.observe_issue_create(outcome="created")
+        elif outcome == "already_created":
+            metrics.observe_issue_create(outcome="already_created")
+        elif outcome == "pending_reconciliation":
+            metrics.observe_issue_create(outcome="pending_reconciliation")
+        elif outcome == "reconciled":
+            metrics.observe_issue_create(outcome="reconciled")
+        elif outcome == "denied":
+            metrics.observe_issue_create(outcome="denied")
+    event = (
+        "issue_reconciliation_outcome"
+        if outcome == "reconciled"
+        else "issue_create_outcome"
+    )
+    get_logger().info(event, outcome=outcome)

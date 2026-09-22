@@ -31,8 +31,8 @@ from project_agent.domain.enums import (
     ProjectDeliveryMode,
     ProjectLifecycleStatus,
 )
+from project_agent.domain.runs import RunStatus
 from project_agent.infrastructure.db.base import Base
-
 
 UUID_PK = Uuid(as_uuid=True)
 UUID_FK = Uuid(as_uuid=True)
@@ -45,9 +45,21 @@ class ClientModel(Base):
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
     company_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default=ClientStatus.ACTIVE.value)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=ClientStatus.ACTIVE.value,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class ProjectModel(Base):
@@ -58,7 +70,10 @@ class ProjectModel(Base):
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
     company_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False, index=True)
-    client_id: Mapped[UUID] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
+    client_id: Mapped[UUID] = mapped_column(
+        ForeignKey("clients.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phase: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -76,8 +91,16 @@ class ProjectModel(Base):
         default=ProjectLifecycleStatus.ACTIVE.value,
         server_default=text("'ACTIVE'"),
     )
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class ProjectMembershipModel(Base):
@@ -89,12 +112,19 @@ class ProjectMembershipModel(Base):
     )
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     user_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     valid_from: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
     valid_to: Mapped[datetime | None] = mapped_column(TIMESTAMP)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class ProjectKnowledgeSpaceModel(Base):
@@ -104,12 +134,23 @@ class ProjectKnowledgeSpaceModel(Base):
     )
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="ragflow")
     external_space_id: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class DocumentModel(Base):
@@ -117,7 +158,10 @@ class DocumentModel(Base):
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
     company_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False, index=True)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     document_category: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     visibility: Mapped[str] = mapped_column(
@@ -127,8 +171,16 @@ class DocumentModel(Base):
         server_default=text("'internal_only'"),
     )
     owner_user_id: Mapped[UUID | None] = mapped_column(UUID_FK)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class DocumentVersionModel(Base):
@@ -138,7 +190,10 @@ class DocumentVersionModel(Base):
     )
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    document_id: Mapped[UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     version_label: Mapped[str] = mapped_column(String(128), nullable=False)
     authority_level: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -154,7 +209,11 @@ class DocumentVersionModel(Base):
     content_hash: Mapped[str | None] = mapped_column(String(128))
     published_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     created_by: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class DocumentAclBindingModel(Base):
@@ -173,7 +232,11 @@ class DocumentAclBindingModel(Base):
     principal_type: Mapped[str] = mapped_column(String(32), nullable=False)
     principal_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
     permission: Mapped[str] = mapped_column(String(32), nullable=False, default="read")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class DocumentIdentifierModel(Base):
@@ -202,7 +265,10 @@ class DocumentIdentifierModel(Base):
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
     company_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     document_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False
     )
@@ -213,14 +279,21 @@ class DocumentIdentifierModel(Base):
     section: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class IngestionJobModel(Base):
     __tablename__ = "ingestion_jobs"
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     document_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False
     )
@@ -230,7 +303,11 @@ class IngestionJobModel(Base):
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
     requested_by: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
     started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
 
@@ -244,7 +321,11 @@ class IngestionAuditModel(Base):
     )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class BackgroundJobModel(Base):
@@ -272,14 +353,26 @@ class BackgroundJobModel(Base):
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
-    available_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    available_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
     locked_by: Mapped[str | None] = mapped_column(String(128))
     locked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     heartbeat_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     lease_expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     last_error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class ThreadModel(Base):
@@ -287,22 +380,45 @@ class ThreadModel(Base):
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
     company_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     user_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
     title: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class AgentRunModel(Base):
     __tablename__ = "agent_runs"
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    thread_id: Mapped[UUID] = mapped_column(ForeignKey("threads.id", ondelete="CASCADE"), nullable=False)
+    thread_id: Mapped[UUID] = mapped_column(
+        ForeignKey("threads.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     company_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     user_id: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="RUNNING", index=True)
+    business_mode: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=RunStatus.QUEUED.value,
+        index=True,
+    )
     model_alias: Mapped[str | None] = mapped_column(String(128))
     prompt_version: Mapped[str | None] = mapped_column(String(64))
     prompt_content_hash: Mapped[str | None] = mapped_column(String(128))
@@ -313,7 +429,7 @@ class AgentRunModel(Base):
     ocr_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_cost_microunits: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     cost_currency: Mapped[str] = mapped_column(String(8), nullable=False, default="USD")
-    started_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
 
 
@@ -324,20 +440,35 @@ class AgentEventModel(Base):
     )
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class EvidenceBundleModel(Base):
     __tablename__ = "evidence_bundles"
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class EvidenceSnapshotModel(Base):
@@ -347,7 +478,10 @@ class EvidenceSnapshotModel(Base):
     bundle_id: Mapped[UUID] = mapped_column(
         ForeignKey("evidence_bundles.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     document_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("document_versions.id", ondelete="SET NULL")
     )
@@ -357,7 +491,11 @@ class EvidenceSnapshotModel(Base):
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class AnswerModel(Base):
@@ -365,10 +503,17 @@ class AnswerModel(Base):
     __table_args__ = (UniqueConstraint("run_id", name="uq_answers_run"),)
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     answer_text: Mapped[str] = mapped_column(Text, nullable=False)
     refusal_reason: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class CitationModel(Base):
@@ -378,21 +523,34 @@ class CitationModel(Base):
     )
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    answer_id: Mapped[UUID] = mapped_column(ForeignKey("answers.id", ondelete="CASCADE"), nullable=False)
+    answer_id: Mapped[UUID] = mapped_column(
+        ForeignKey("answers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     evidence_snapshot_id: Mapped[UUID] = mapped_column(
         ForeignKey("evidence_snapshots.id", ondelete="RESTRICT"), nullable=False
     )
     citation_no: Mapped[int] = mapped_column(Integer, nullable=False)
     quoted_text: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class IssueDraftModel(Base):
     __tablename__ = "issue_drafts"
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     created_by: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -405,8 +563,16 @@ class IssueDraftModel(Base):
     actual_behavior: Mapped[str | None] = mapped_column(Text)
     evidence_ids_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class SandboxProjectModel(Base):
@@ -414,12 +580,23 @@ class SandboxProjectModel(Base):
     __table_args__ = (UniqueConstraint("project_id", name="uq_sandbox_project_project"),)
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     external_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class SandboxIssueModel(Base):
@@ -436,7 +613,10 @@ class SandboxIssueModel(Base):
     )
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     sandbox_project_id: Mapped[UUID] = mapped_column(
         ForeignKey("sandbox_projects.id", ondelete="CASCADE"), nullable=False
     )
@@ -453,8 +633,16 @@ class SandboxIssueModel(Base):
     assignee_id: Mapped[UUID | None] = mapped_column(UUID_FK)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="sandbox")
     client_request_id: Mapped[str | None] = mapped_column(String(128))
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class IssueCandidateModel(Base):
@@ -473,7 +661,11 @@ class IssueCandidateModel(Base):
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
     reasons_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class SandboxIssueEventModel(Base):
@@ -486,21 +678,32 @@ class SandboxIssueEventModel(Base):
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     actor_id: Mapped[UUID | None] = mapped_column(UUID_FK)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class ToolConfirmationModel(Base):
     __tablename__ = "tool_confirmations"
 
     id: Mapped[UUID] = mapped_column(UUID_PK, primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
     request_payload_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
     confirmed_by: Mapped[UUID | None] = mapped_column(UUID_FK)
     confirmed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class IdempotencyRecordModel(Base):
@@ -517,8 +720,16 @@ class IdempotencyRecordModel(Base):
     resource_type: Mapped[str | None] = mapped_column(String(64))
     resource_id: Mapped[str | None] = mapped_column(String(128))
     response_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class AuditLogModel(Base):
@@ -533,7 +744,11 @@ class AuditLogModel(Base):
     resource_id: Mapped[str | None] = mapped_column(String(128))
     outcome: Mapped[str] = mapped_column(String(32), nullable=False)
     details_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class SystemConfigModel(Base):
@@ -547,9 +762,18 @@ class SystemConfigModel(Base):
     config_value_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
     updated_by: Mapped[UUID] = mapped_column(UUID_FK, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class DataRetentionPolicyModel(Base):
@@ -570,5 +794,13 @@ class DataRetentionPolicyModel(Base):
     legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.now(),
+    )

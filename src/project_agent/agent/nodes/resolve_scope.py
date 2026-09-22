@@ -5,7 +5,10 @@ from uuid import UUID
 from project_agent.agent.nodes.serialization import serialize_authorized_context
 from project_agent.agent.state import AgentState
 from project_agent.application.ports.qa_graph import QAGraphStorePort
-from project_agent.application.services.authorization import AuthenticatedIdentity, AuthorizationService
+from project_agent.application.services.authorization import (
+    AuthenticatedIdentity,
+    AuthorizationService,
+)
 
 
 async def resolve_scope_node(

@@ -35,7 +35,8 @@ class _CaptureSession:
 
 
 def _sql(statement: object) -> str:
-    return str(statement.compile(dialect=postgresql.dialect())).lower()  # type: ignore[attr-defined]
+    compiled = statement.compile(dialect=postgresql.dialect())  # type: ignore[attr-defined]
+    return str(compiled).lower()
 
 
 @pytest.mark.asyncio

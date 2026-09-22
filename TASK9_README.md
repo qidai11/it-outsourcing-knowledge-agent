@@ -6,7 +6,35 @@
 TASK9_IMPLEMENTATION = COMPLETE
 TASK9_OFFLINE_GATE = PASS
 TASK9_LIVE_POSTGRES_GATE = PENDING until RUN_POSTGRES_INTEGRATION=1
+WS1_FASTAPI_AUTH_RUNTIME_WIRING = IMPLEMENTED
+WS1_OFFLINE_GATE = PASS
+WS1_LIVE_POSTGRES_API_GATE = PENDING until RUN_POSTGRES_INTEGRATION=1
 ```
+
+
+## WS1 补全：FastAPI 生产认证接线
+
+WS1 在 Task 9 已有授权原语之上补齐 API 生产接线：
+
+```text
+Bearer JWT
+→ AuthenticatedIdentity(user_id only)
+→ 当前 PostgreSQL ProjectMembership
+→ DocumentAccessService 角色权限矩阵
+→ 服务端构造 DocumentActor
+→ Task 6 文档用例
+```
+
+当前证据边界：
+
+```text
+Task 9 authorization primitives      : implemented
+WS1 FastAPI auth/runtime wiring       : implemented
+WS1 offline gate                     : PASS
+WS1 live PostgreSQL API gate         : PENDING
+```
+
+`PENDING` 表示尚未在本次实现环境中使用真实迁移后的 PostgreSQL 运行 `tests/integration/api/test_document_auth_postgres.py`；不得把离线 fake-membership 回归或 skip 结果描述为 live validation。WS1 不包含 Run API/SSE、Worker EXECUTE/RESUME、真实 Structured LLM、QA/Issue Graph 改造、Observability、Docker Completion 或 Evaluation。
 
 ## 本阶段目标
 

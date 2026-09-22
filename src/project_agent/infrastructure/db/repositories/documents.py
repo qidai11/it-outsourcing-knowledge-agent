@@ -18,6 +18,7 @@ from project_agent.infrastructure.db.models.schema import (
     DocumentModel,
     DocumentVersionModel,
     ProjectKnowledgeSpaceModel,
+    ProjectModel,
 )
 
 
@@ -45,9 +46,10 @@ class SqlAlchemyDocumentWorkflowRepository:
             self._session.add(document)
             await self._session.flush()
         else:
-            document = await self._session.get(DocumentModel, draft.document_id)
-            if document is None:
+            existing_document = await self._session.get(DocumentModel, draft.document_id)
+            if existing_document is None:
                 raise LookupError(f"document {draft.document_id} does not exist")
+            document = existing_document
             if document.project_id != draft.project_id:
                 raise ValueError("document cannot move across projects")
             if document.document_category != draft.document_category:
@@ -140,6 +142,13 @@ class SqlAlchemyDocumentWorkflowRepository:
             )
         )
         await self._session.flush()
+
+    async def project_code(self, project_id: UUID) -> str:
+        stmt = select(ProjectModel.code).where(ProjectModel.id == project_id)
+        value = (await self._session.execute(stmt)).scalar_one_or_none()
+        if value is None:
+            raise LookupError(f"project {project_id} does not exist")
+        return str(value)
 
     async def knowledge_space_id(self, project_id: UUID) -> str:
         stmt = select(ProjectKnowledgeSpaceModel.external_space_id).where(

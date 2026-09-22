@@ -24,7 +24,8 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.asyncio
-async def test_repository_enriches_authority_and_marks_only_latest_published_version_current() -> None:
+async def test_repository_enriches_authority_and_marks_only_latest_published_version_current(
+) -> None:
     engine = create_async_engine(os.environ["DATABASE_URL"])
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     company_id, client_id, project_id, manager_id = uuid4(), uuid4(), uuid4(), uuid4()
@@ -32,6 +33,7 @@ async def test_repository_enriches_authority_and_marks_only_latest_published_ver
 
     async with sessions() as session:
         session.add(ClientModel(id=client_id, company_id=company_id, name="Evidence Client"))
+        await session.flush()
         session.add(ProjectModel(
             id=project_id,
             company_id=company_id,
@@ -41,6 +43,7 @@ async def test_repository_enriches_authority_and_marks_only_latest_published_ver
             phase="test",
             manager_id=manager_id,
         ))
+        await session.flush()
         doc = DocumentModel(
             company_id=company_id,
             project_id=project_id,
@@ -87,7 +90,11 @@ async def test_repository_enriches_authority_and_marks_only_latest_published_ver
     assert result[current_id].title == "Requirement Baseline"
 
     async with sessions() as session:
-        await session.execute(DocumentVersionModel.__table__.delete().where(DocumentVersionModel.document_id == doc_id))
+        await session.execute(
+            DocumentVersionModel.__table__.delete().where(
+                DocumentVersionModel.document_id == doc_id
+            )
+        )
         await session.execute(DocumentModel.__table__.delete().where(DocumentModel.id == doc_id))
         await session.execute(ProjectModel.__table__.delete().where(ProjectModel.id == project_id))
         await session.execute(ClientModel.__table__.delete().where(ClientModel.id == client_id))

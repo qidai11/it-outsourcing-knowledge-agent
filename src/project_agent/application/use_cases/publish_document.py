@@ -12,6 +12,7 @@ from project_agent.application.ports.knowledge import (
     KnowledgeIngestionPort,
     KnowledgeIngestionRequest,
 )
+from project_agent.application.ports.transaction import TransactionCommitPort
 from project_agent.application.use_cases.review_document import DocumentPermissionDenied
 from project_agent.application.use_cases.upload_document import DocumentActor
 from project_agent.domain.enums import DocumentLifecycleStatus
@@ -32,9 +33,12 @@ class PublishDocumentUseCase:
         self,
         repository: DocumentWorkflowRepository,
         knowledge: KnowledgeIngestionPort,
+        *,
+        commit_barrier: TransactionCommitPort | None = None,
     ) -> None:
         self._repository = repository
         self._knowledge = knowledge
+        self._commit_barrier = commit_barrier
 
     async def execute(self, version_id: UUID, actor: DocumentActor) -> DocumentVersionRecord:
         if "publish_document" not in actor.permissions:
@@ -44,10 +48,11 @@ class PublishDocumentUseCase:
         if current.lifecycle_status is not DocumentLifecycleStatus.APPROVED:
             raise ValueError("only APPROVED documents can be published")
 
+        project_code = await self._repository.project_code(current.project_id)
         knowledge_space_id = await self._repository.knowledge_space_id(current.project_id)
         receipt = await self._knowledge.ingest(
             KnowledgeIngestionRequest(
-                project_id=str(current.project_id),
+                project_id=project_code,
                 knowledge_space_id=knowledge_space_id,
                 document_version_id=str(current.version_id),
                 object_key=current.source_uri,
@@ -68,6 +73,9 @@ class PublishDocumentUseCase:
                 details={"ingestion_job_id": receipt.ingestion_job_id},
             )
         )
+
+        if self._commit_barrier is not None:
+            await self._commit_barrier.commit()
 
         return await self._finalize(
             current,
@@ -106,6 +114,8 @@ class PublishDocumentUseCase:
                     details={"error_code": status.error_code},
                 )
             )
+            if self._commit_barrier is not None:
+                await self._commit_barrier.commit()
             # The new version remains APPROVED. The old PUBLISHED version is untouched.
             raise DocumentPublishFailed(status.error_code or "knowledge ingestion failed")
         if status.state is not IngestionState.SUCCEEDED:

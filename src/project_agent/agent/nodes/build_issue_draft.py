@@ -26,12 +26,18 @@ async def build_issue_draft_node(
         candidate_result = IssueCandidateResult.model_validate(
             await store.load_artifact(UUID(candidate_id))
         )
+    evidence_ids: tuple[str, ...] = ()
+    bundle_id = state.get("evidence_bundle_id")
+    if bundle_id:
+        frozen = await store.load_governed_evidence_bundle(UUID(bundle_id))
+        evidence_ids = tuple(str(item.snapshot_id) for item in frozen.evidence)
     draft = await drafts.create_from_text(
         run_id=run_id,
         project_id=UUID(state["project_id"]),
         created_by=UUID(state["user_id"]),
         text=text,
         candidates=candidate_result,
+        evidence_ids=evidence_ids,
     )
     return {
         "issue_draft_id": str(draft.id),

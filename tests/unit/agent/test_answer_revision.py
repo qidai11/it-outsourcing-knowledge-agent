@@ -4,20 +4,21 @@ from datetime import date
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
+from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
+from tests.fakes.llm import FakeStructuredLLM
+from tests.fakes.qa_graph_store import InMemoryQAGraphStore
 
 from project_agent.agent.nodes.citation_guard import citation_guard_node
 from project_agent.agent.nodes.generate_answer import generate_answer_node
 from project_agent.agent.nodes.revise_answer import revise_answer_node
+from project_agent.application.ports.knowledge import KnowledgeChunk
 from project_agent.application.services.citation_guard import CitationGuard
 from project_agent.application.services.evidence_governance import (
     DocumentEvidenceMetadata,
     EvidenceGovernanceService,
 )
 from project_agent.domain.enums import AuthorityLevel, DocumentCategory, DocumentLifecycleStatus
-from project_agent.application.ports.knowledge import KnowledgeChunk
-from tests.fakes.evidence_governance import FakeEvidenceGovernanceRepository
-from tests.fakes.llm import FakeStructuredLLM
-from tests.fakes.qa_graph_store import InMemoryQAGraphStore
 
 
 async def _seed_state():
@@ -76,6 +77,48 @@ async def _seed_state():
 
 
 @pytest.mark.asyncio
+async def test_answer_generation_requires_at_least_one_evidence_id_per_claim() -> None:
+    store, state = await _seed_state()
+    llm = FakeStructuredLLM()
+    llm.queue_response(
+        {
+            "claims": [{"text": "连续登录失败后会锁定账户。"}],
+            "conflict_disclosure": None,
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        await generate_answer_node(
+            state,
+            llm=llm,
+            llm_usage=llm,
+            store=store,
+            model_alias="fake",
+        )
+
+
+@pytest.mark.asyncio
+async def test_answer_generation_rejects_empty_evidence_ids_per_claim() -> None:
+    store, state = await _seed_state()
+    llm = FakeStructuredLLM()
+    llm.queue_response(
+        {
+            "claims": [{"text": "连续登录失败后会锁定账户。", "evidence_ids": []}],
+            "conflict_disclosure": None,
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        await generate_answer_node(
+            state,
+            llm=llm,
+            llm_usage=llm,
+            store=store,
+            model_alias="fake",
+        )
+
+
+@pytest.mark.asyncio
 async def test_one_invalid_draft_can_be_revised_once_then_persisted_with_citation() -> None:
     store, state = await _seed_state()
     llm = FakeStructuredLLM()
@@ -121,9 +164,17 @@ async def test_second_invalid_draft_stops_after_one_revision() -> None:
     llm.queue_response(invalid)
     llm.queue_response(invalid)
 
-    state.update(await generate_answer_node(state, llm=llm, llm_usage=llm, store=store, model_alias="fake"))
+    state.update(
+        await generate_answer_node(
+            state, llm=llm, llm_usage=llm, store=store, model_alias="fake"
+        )
+    )
     state.update(await citation_guard_node(state, guard=CitationGuard(), store=store))
-    state.update(await revise_answer_node(state, llm=llm, llm_usage=llm, store=store, model_alias="fake"))
+    state.update(
+        await revise_answer_node(
+            state, llm=llm, llm_usage=llm, store=store, model_alias="fake"
+        )
+    )
     checked = await citation_guard_node(state, guard=CitationGuard(), store=store)
 
     assert checked["route"] == "refusal"
@@ -136,6 +187,7 @@ async def test_citation_persistence_keeps_original_evidence_number() -> None:
     bundle_id = UUID(state["evidence_bundle_id"])
     original = store.governed_bundles[bundle_id]
     from dataclasses import replace
+
     from project_agent.domain.evidence import FrozenEvidenceBundle
 
     e1 = original.evidence[0]
