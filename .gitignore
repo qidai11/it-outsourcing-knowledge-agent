@@ -76,3 +76,6 @@ eval/datasets/
 
 # WS7 live acceptance evidence
 artifacts/ws7-live/
+
+# WS8 evaluation generated artifacts
+evaluation/artifacts/
