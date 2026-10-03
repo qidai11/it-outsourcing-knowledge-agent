@@ -4,7 +4,7 @@ from uuid import UUID
 
 from project_agent.agent.nodes.analyze_query import QueryAnalysis
 from project_agent.agent.nodes.models import RetrievalPlan
-from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
+from project_agent.agent.nodes.resolve_identifiers import IdentifierResolutionPort
 from project_agent.agent.nodes.serialization import deserialize_authorized_context
 from project_agent.agent.state import AgentState
 from project_agent.application.ports.qa_graph import QAGraphStorePort
@@ -13,8 +13,9 @@ from project_agent.application.ports.qa_graph import QAGraphStorePort
 async def resolve_identifiers_node(
     state: AgentState,
     *,
-    exact_resolver: ExactIdentifierResolver,
+    exact_resolver: IdentifierResolutionPort,
     store: QAGraphStorePort,
+    allow_second_round: bool = True,
 ) -> AgentState:
     run_id = UUID(state["run_id"])
     analysis = QueryAnalysis.model_validate(
@@ -36,7 +37,7 @@ async def resolve_identifiers_node(
         identifier_resolutions=resolution.resolutions,
         constrained_document_version_ids=resolution.constrained_document_version_ids,
         allowed_categories=tuple(context.scope.allowed_document_categories),
-        allow_second_round=True,
+        allow_second_round=allow_second_round,
     )
     artifact_id = await store.save_artifact(
         run_id=run_id,

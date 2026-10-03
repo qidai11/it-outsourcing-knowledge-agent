@@ -223,3 +223,33 @@ async def test_qa_executor_rejects_resume_without_touching_session() -> None:
         await executor.resume(run_record(), {"action": "confirm"})
 
     assert factory.sessions == []
+
+
+def test_qa_runtime_composition_surface_cannot_disable_security_services() -> None:
+    from project_agent.runtime.qa import QARuntimeComposition
+
+    assert set(QARuntimeComposition.__dataclass_fields__) == {
+        "exact_resolver_factory",
+        "allow_second_round",
+    }
+    assert QARuntimeComposition().allow_second_round is True
+
+
+def test_single_round_composition_changes_only_retrieval_round_policy() -> None:
+    from project_agent.evaluation.variants import qa_runtime_composition_for_variant
+
+    llm = FakeStructuredLLM()
+    executor = build_production_qa_executor(
+        settings=settings(),
+        session_factory=RecordingSessionFactory(),  # type: ignore[arg-type]
+        saver=object(),
+        knowledge=BindingKnowledge(),  # type: ignore[arg-type]
+        llm=llm,
+        llm_usage=llm,
+        composition=qa_runtime_composition_for_variant("single_round_only"),
+    )
+    deps = executor._build_dependencies(FakeSession())  # type: ignore[attr-defined,arg-type]
+    assert deps.allow_second_round is False
+    assert isinstance(deps.authorization, AuthorizationService)
+    assert isinstance(deps.evidence_governance._repository, SqlAlchemyEvidenceGovernanceRepository)
+    assert deps.citation_guard is not None

@@ -58,3 +58,22 @@ def test_qa_graph_wires_bounded_retrieval_grade_loop(monkeypatch) -> None:
         "retrieve": "retrieve",
         "refuse": "refuse",
     }
+
+
+def test_single_round_variant_keeps_citation_guard_and_governance_nodes(monkeypatch) -> None:
+    graph_module = ModuleType("langgraph.graph")
+    graph_module.START = "__start__"  # type: ignore[attr-defined]
+    graph_module.END = "__end__"  # type: ignore[attr-defined]
+    graph_module.StateGraph = _FakeStateGraph  # type: ignore[attr-defined]
+    package = ModuleType("langgraph")
+    monkeypatch.setitem(sys.modules, "langgraph", package)
+    monkeypatch.setitem(sys.modules, "langgraph.graph", graph_module)
+
+    deps = cast(QAGraphDependencies, cast(Any, object()))
+    build_project_qa_graph(deps)
+    builder = _FakeStateGraph.last
+    assert builder is not None
+    assert "govern_evidence" in builder.nodes
+    assert "citation_guard" in builder.nodes
+    assert builder.conditionals["govern_evidence"]["generate_answer"] == "generate_answer"
+    assert builder.conditionals["citation_guard"]["answered"] == "__end__"

@@ -13,6 +13,7 @@ from dataclasses import fields, is_dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}")
 _JWT_RE = re.compile(
@@ -47,6 +48,8 @@ def _to_jsonable(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, UUID):
         return str(value)
     if is_dataclass(value) and not isinstance(value, type):
         return {item.name: _to_jsonable(getattr(value, item.name)) for item in fields(value)}

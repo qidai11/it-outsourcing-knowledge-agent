@@ -50,6 +50,7 @@ class QAGraphStorePort(Protocol):
         project_id: UUID,
         query_text: str,
         chunks: list[KnowledgeChunk],
+        retrieval_round: int,
     ) -> UUID: ...
 
     async def load_evidence_bundle(self, bundle_id: UUID) -> tuple[KnowledgeChunk, ...]: ...
