@@ -1,42 +1,46 @@
 # IT Outsourcing Knowledge and Ticket Collaboration Agent
 
-面向 **IT 外包 / 软件交付团队** 的多项目知识与工单协同 Agent。
+> 面向 IT 外包 / 软件交付团队的多项目知识与工单协同 Agent。
+> 当前阶段：**Internal PoC / MVP**。核心目标不是让 LLM “自动做更多”，而是在多项目、多版本、多权限和有副作用操作的企业场景中，让 Agent 的结果**可追溯、可复核、可恢复、可约束**。
 
-项目聚焦真实交付过程中常见的四类问题：**资料分散、版本混用、跨项目数据隔离、知识到工单的受控衔接**。系统以 FastAPI 提供 API，以 LangGraph 编排业务流程，以 PostgreSQL 保存业务事实与运行状态，以 RAGFlow 承担文档解析和检索，并通过权限、版本、权威等级、Evidence Snapshot、Citation Guard、人工确认和幂等机制约束 Agent 行为。
-
-> 当前定位：**internal-first, external-ready**。V1 面向公司内部项目成员，不是通用企业 AI 平台，也不直接连接生产 Jira / 禅道 / 飞书项目进行写操作。
-
----
-
-## 1. 为什么做这个项目
-
-IT 外包交付通常同时维护多个客户、多个项目。需求、接口说明、测试记录、实施手册和历史问题往往散落在不同位置，而且存在大量同名文件、旧版本文档和带编号的业务对象，例如：
-
-```text
-REQ-3.2.1
-API-ORDER-017
-BUG-1842
-ERR-PAY-403
-```
-
-如果只做一个普通的「向量库 + LLM」RAG，容易出现几个工程问题：
-
-- 查询精确编号时召回相邻编号，而不是目标对象；
-- 新旧版本同时存在时，模型引用旧文档；
-- 不同客户或项目的数据进入同一次回答；
-- 检索分数高的资料覆盖了人工指定的正式/权威资料；
-- 回答中的引用无法回溯到当时真正使用的证据；
-- Agent 根据自然语言直接创建工单，造成误操作或重复副作用。
-
-这个项目的核心不是「让 LLM 自己做更多」，而是把 LLM 放在一个有明确业务边界的执行系统中：**LLM 负责理解和生成，程序负责权限、状态、证据、确认和副作用控制。**
+**Repository:** https://github.com/qidai11/it-outsourcing-knowledge-agent
 
 ---
 
-## 2. 核心业务场景
+## 项目概览
 
-### 2.1 项目交付知识问答
+IT 外包交付通常同时维护多个客户、多个项目。需求文档、接口说明、测试记录、实施手册和历史工单分散在不同位置，并长期存在以下问题：
 
-用户在已授权项目范围内查询需求、接口、测试、实施或历史交付资料。
+- 同一项目中存在多个文档版本，旧版本容易被误用；
+- `REQ-3.2.1`、`API-ORDER-017`、`ERR-IMPORT-004` 等精确业务编号不适合只靠语义检索；
+- 不同客户 / 项目的知识必须严格隔离；
+- “语义更相似”不等于“业务上更权威”；
+- 回答中的引用需要能够回溯到当时真正使用的证据；
+- 创建 Issue 属于有副作用操作，不能由模型直接执行；
+- Agent 执行时间可能超过一次 HTTP 请求，需要支持状态持久化、恢复、重试和审计。
+
+因此，本项目采用：
+
+- **FastAPI**：对外提供 Document / Run / SSE / Health / Metrics API；
+- **LangGraph**：编排 QA、Issue Lookup、Issue Create 流程；
+- **PostgreSQL**：保存权限、文档、Identifier、Run、Evidence、Issue、审计和 Checkpoint；
+- **RAGFlow `v0.26.4`**：承担文档解析、Chunk、检索和项目知识空间；
+- **Structured LLM API**：负责 Query Analysis、结构化生成、回答与有限修订；
+- **确定性业务约束**：负责 Authorization、版本治理、Evidence、Citation、HITL、Idempotency 和 Recovery。
+
+项目当前定位为：
+
+> **internal-first, external-ready**
+
+V1 面向公司内部项目成员，不是通用企业 AI 平台，也不直接连接生产 Jira / 禅道 / 飞书项目执行真实写操作。
+
+---
+
+## 核心业务场景
+
+### 1. 项目交付知识问答
+
+用户在已授权项目范围内查询需求、接口、数据库、测试、实施和历史交付资料。
 
 ```mermaid
 flowchart LR
@@ -52,20 +56,20 @@ flowchart LR
     J --> K[Answer / Revision / Refusal]
 ```
 
-这条链路不是单纯 Vector Top-K：
+这条链路不是简单的 `Vector Top-K -> LLM`：
 
-1. JWT 只确认用户身份；
-2. 项目权限从 PostgreSQL 中的当前 `ProjectMembership` 重新计算；
-3. 对需求号、接口号、错误码等 Identifier 优先走精确注册表；
-4. 再把项目、文档版本和知识空间约束下推到 RAGFlow；
-5. 检索结果返回后再次做 Evidence ACL 后置校验；
-6. 只允许当前、有效、满足 Authority Policy 的证据进入回答；
-7. 最终引用绑定到冻结的 Evidence Snapshot；
-8. Citation Guard 校验回答中的 claim/citation 关系，失败时只允许有限修订，否则拒答。
+1. JWT 只负责确认用户身份；
+2. 当前项目权限从 PostgreSQL 中的 `ProjectMembership` 重新计算；
+3. 对业务 Identifier 尝试走项目范围内的精确解析；
+4. 项目、知识空间、文档版本等约束下推到检索层；
+5. 检索结果返回后再次执行 Evidence ACL / Version / Authority 治理；
+6. 只有满足治理规则的证据才能进入回答；
+7. 最终 Citation 绑定冻结的 Evidence Snapshot；
+8. Citation Guard 校验 claim / citation 关系，不满足约束时进行有限修订或拒答。
 
-### 2.2 历史 Issue 查询
+### 2. 历史 Issue 查询与重复候选
 
-系统可以在当前项目内查询 Sandbox 历史 Issue，结合 `error_code`、`module`、关键词、状态等信号生成 `possible_duplicates` 候选。
+系统可以在当前项目内查询 Sandbox 历史 Issue，并结合 `error_code`、`module`、关键词、状态等信号形成 `possible_duplicates`。
 
 ```mermaid
 flowchart LR
@@ -75,15 +79,15 @@ flowchart LR
     D --> E[View / Link / Continue / Cancel]
 ```
 
-系统不会把相似 Issue 自动判定为真正的 duplicate；候选只是给人的决策证据。
+相似候选只是提供给人的决策证据，系统不会把“语义相似”直接等价成“真实重复 Issue”。
 
-### 2.3 基于证据的 Issue 草稿与受控创建
+### 3. 基于证据的 Issue 草稿与受控创建
 
-当用户选择继续创建 Issue 时，系统先组合需求、测试、知识证据和历史 Issue，生成 Draft，再进入人工确认。
+当用户需要创建 Issue 时，Agent 先组织证据并生成 Draft，再进入人工确认。
 
 ```mermaid
 flowchart LR
-    A[Authorized Scope] --> B[Retrieve Issue Evidence]
+    A[Authorized Scope] --> B[Retrieve Evidence]
     B --> C[Search Similar Issues]
     C --> D[Issue Draft]
     D --> E[LangGraph Interrupt]
@@ -95,18 +99,18 @@ flowchart LR
     J --> K[Created / Reconciled]
 ```
 
-创建链路的关键约束：
+关键约束：
 
 - 没有明确确认，不产生创建副作用；
-- Resume 请求必须绑定确认时的 payload hash；
-- 真正执行前重新检查用户权限；
-- 应用层和 Sandbox Provider 都有幂等约束；
-- 对「请求已发送但响应丢失」的未知结果提供 reconciliation；
-- V1 只写入 `SandboxProjectTrackerAdapter`，不直接写生产 Jira / 禅道 / 飞书项目。
+- Resume 请求绑定确认时的 payload；
+- 真正执行前重新检查当前权限；
+- 应用层和 Sandbox Provider 均存在幂等边界；
+- 对“请求已发出但响应丢失”的未知结果执行 reconciliation；
+- 当前只写入 `SandboxProjectTrackerAdapter`。
 
 ---
 
-## 3. 系统架构
+## 系统架构
 
 ```mermaid
 flowchart TB
@@ -149,118 +153,164 @@ flowchart TB
     Client --> API
     API --> App
     App --> PG
+
     Runs --> Queue
     Queue --> Runner
     Runner --> Graph
+
     Graph --> Authorization
     Graph --> Identifier
     Graph --> Evidence
     Graph --> RAG
     Graph --> LLM
     Graph --> Tracker
+
     Docs --> DocumentLifecycle
     DocumentLifecycle --> Store
     DocumentLifecycle --> RAG
+
     Reaper --> PG
 ```
 
 ### 技术栈
 
-| 层                  | 技术                             | 作用                                                         |
-| ------------------- | -------------------------------- | ------------------------------------------------------------ |
-| API                 | FastAPI                          | 文档、Run、SSE、健康检查、Metrics                            |
-| Agent Orchestration | LangGraph                        | QA / Issue 流程、Interrupt、Resume、Checkpoint               |
-| Database            | PostgreSQL 16                    | 权限、文档、Identifier、Run、Evidence、Issue、审计等业务事实 |
-| Background Jobs     | PostgreSQL Job Queue             | Worker、Lease、Heartbeat、Retry、Reaper                      |
-| Knowledge           | RAGFlow `v0.26.4`                | 文档解析、Chunk、检索与项目知识空间                          |
-| LLM                 | OpenAI-compatible Structured API | Query Analysis、结构化生成、回答与修订                       |
-| Object Storage      | LocalFileObjectStoreAdapter      | V1 源文件存储                                                |
-| Issue Provider      | SandboxProjectTrackerAdapter     | V1 工单查询、创建与故障恢复验证                              |
-| Persistence         | SQLAlchemy + Alembic             | 异步数据访问和 Schema Migration                              |
-| Observability       | structlog + Prometheus           | JSON 日志、Run/Provider/Queue/Token 等指标                   |
-| Tooling             | uv + Ruff + MyPy + Pytest        | 依赖、静态检查与自动化测试                                   |
+| 层 | 技术 | 作用 |
+|---|---|---|
+| API | FastAPI | Document、Run、SSE、Health、Metrics |
+| Agent Orchestration | LangGraph | QA / Issue 流程、Interrupt、Resume、Checkpoint |
+| Database | PostgreSQL 16 | 权限、文档、Identifier、Run、Evidence、Issue、审计等业务事实 |
+| Background Jobs | PostgreSQL Job Queue | Worker、Lease、Heartbeat、Retry、Reaper |
+| Knowledge | RAGFlow `v0.26.4` | 文档解析、Chunk、检索、项目知识空间 |
+| LLM | OpenAI-compatible Structured API | Query Analysis、结构化输出、Answer、Revision |
+| Object Storage | `LocalFileObjectStoreAdapter` | V1 源文件存储 |
+| Issue Provider | `SandboxProjectTrackerAdapter` | Issue 查询、创建、幂等和恢复验证 |
+| Persistence | SQLAlchemy + Alembic | 异步数据访问、Schema Migration |
+| Observability | structlog + Prometheus | JSON Logging、Run / Provider / Queue / Token Metrics |
+| Tooling | uv + Ruff + MyPy + Pytest | 依赖、静态检查、自动化测试 |
 
 ---
 
-## 4. 关键工程设计
+## 关键工程设计
 
-### 4.1 项目级权限不是 Prompt 约束
+### 1. 权限隔离不是 Prompt 约束
 
-系统不会把「你只能访问项目 A」只写进 Prompt。
+系统不会只在 Prompt 中告诉模型“只能访问项目 A”。
 
-认证后的 JWT 只提供可信 `user_id`，真正的访问范围由服务器根据当前数据库状态计算：
+真实授权链路为：
 
 ```text
 JWT sub
-→ active ProjectMembership
-→ ProjectAccessScope
-→ allowed knowledge spaces / document versions
-→ retrieval down-push
-→ Evidence post-filter
+  ↓
+active ProjectMembership
+  ↓
+ProjectAccessScope
+  ↓
+allowed knowledge spaces / document versions
+  ↓
+retrieval constraint
+  ↓
+Evidence post-filter
 ```
 
-因此，即使 LLM 或检索服务返回了不属于当前项目的内容，也不能直接进入后续回答。
+即使检索服务或 LLM 返回了越权内容，未经服务端治理也不能进入最终回答。
 
-### 4.2 Exact Identifier + 范围受限检索
+### 2. Exact Identifier + 范围受限检索
 
-对于项目中的精确业务编号，系统采用两阶段思路：
+针对需求号、接口号、错误码等业务 Identifier，设计目标是：
 
 ```text
 Query
-→ Identifier Extraction
-→ Project-scoped Exact Registry
-→ constrained RAGFlow Retrieval
-→ Evidence Governance
+  ↓
+Identifier Extraction
+  ↓
+Project-scoped Exact Registry
+  ↓
+Constrained Retrieval
+  ↓
+Evidence Governance
 ```
 
-精确命中使用 PostgreSQL B-tree 路径；`pg_trgm` 只用于拼写建议，不用模糊结果覆盖精确业务事实。
+精确 Identifier 的目标是避免：
 
-这解决的是企业知识库里很常见的问题：用户查 `REQ-3.2.1` 时，Embedding 语义相近并不代表 `REQ-3.2.2` 可以替代目标需求。
+```text
+REQ-3.2.1  ≠  REQ-3.2.2
+```
 
-### 4.3 文档生命周期与人工 Authority
+仅凭 embedding 相似度不能替代业务对象精确匹配。
 
-文档状态：
+> **Evaluation 现状：** 当前 V0 live gate 发现 Exact Identifier 集成路径存在明显回归，详见下方 Evaluation。该设计仍保留，但当前实现需要继续修复和验证。
+
+### 3. 文档生命周期与人工 Authority
+
+文档生命周期：
 
 ```text
 DRAFT
-→ UNDER_REVIEW
-→ APPROVED
-→ PUBLISHED
-→ SUPERSEDED / ARCHIVED / DELETE_PENDING / DELETED
+  ↓
+UNDER_REVIEW
+  ↓
+APPROVED
+  ↓
+PUBLISHED
+  ↓
+SUPERSEDED / ARCHIVED / DELETE_PENDING / DELETED
 ```
 
-**只有 `PUBLISHED` 文档可以进入普通知识检索。**
+主要规则：
 
-发布新版本时旧版本进入 `SUPERSEDED`；AI 可以提供 MetadataSuggestion，但不能自己批准 Authority，也不能自己发布正式文档。
+- 普通知识检索只允许使用可用的正式版本；
+- 新版本发布后，旧版本可进入 `SUPERSEDED`；
+- 模型可以提出 Metadata Suggestion；
+- 模型不能自行批准 Authority；
+- 模型不能自行发布正式文档。
 
-### 4.4 Evidence Snapshot 与 Citation Guard
+### 4. Evidence Snapshot + Citation Guard
 
-系统不会只保存最后一段自然语言答案。
-
-回答前，会把经过 ACL、版本和 Authority 治理后的候选证据冻结为 Evidence Snapshot；最终 Citation 指向这些 Snapshot，而不是重新查询得到的动态结果。
+系统不只保存最终自然语言回答，而是保存当时真正参与回答的治理后证据。
 
 ```text
 Retrieval Candidate
-→ Governance
-→ Evidence Bundle
-→ Evidence Snapshot
-→ Answer
-→ Citation
+  ↓
+ACL / Version / Authority Governance
+  ↓
+Evidence Bundle
+  ↓
+Evidence Snapshot
+  ↓
+Answer
+  ↓
+Citation
 ```
 
-这使回答具备可复核性：之后即使知识库内容变化，也可以知道某次 Run 当时依据了什么证据。
+这样即使后续知识库内容发生变化，也可以复核某次 Run 当时基于哪些证据生成回答。
 
-### 4.5 Human-in-the-loop 写操作
+### 5. Human-in-the-loop 写操作
 
-知识查询可以自动执行，但工单创建属于有副作用操作。
+知识问答可以自动执行，但 Issue 创建属于有副作用操作。
 
-因此创建流程使用 LangGraph interrupt/resume，把「生成 Draft」和「真正创建」分开；用户确认之后仍要重新检查权限，并经过持久化幂等屏障。
+因此：
 
-### 4.6 Durable Run，而不是一次 HTTP 请求跑到底
+```text
+Draft
+  ↓
+Interrupt
+  ↓
+Human Confirmation
+  ↓
+Permission Re-check
+  ↓
+Idempotency Barrier
+  ↓
+Provider Write
+```
 
-Run API 把一次 Agent 执行建模为持久化业务对象。
+模型不能绕过确认直接执行写操作。
 
-支持三种业务模式：
+### 6. Durable Run
+
+一次 Agent 执行被建模成持久化 `AgentRun`，而不是绑定在单次 HTTP 请求生命周期内。
+
+当前支持：
 
 ```text
 qa
@@ -268,48 +318,225 @@ issue_lookup
 issue_create
 ```
 
-执行由 PostgreSQL Job Queue 交给 Worker，Run 状态和事件写入数据库；客户端可以通过 SSE 消费事件，并使用 `Last-Event-ID` 继续读取。
+Run 通过 PostgreSQL Job Queue 交给 Worker 执行，状态和事件持续写入数据库。客户端可以通过 SSE 消费事件，并通过 `Last-Event-ID` 继续读取。
 
-这避免把长执行链绑定在一次同步 HTTP 请求生命周期内，也为重试、恢复、观测和人工确认提供稳定边界。
+这样为以下能力提供稳定边界：
 
----
-
-## 5. 数据与状态边界
-
-PostgreSQL 不只是保存聊天历史，它是本项目的业务事实中心，主要包含：
-
-- Client / Project；
-- ProjectMembership / KnowledgeSpace；
-- Document / DocumentVersion / ACL；
-- DocumentIdentifier；
-- BackgroundJob / IngestionJob；
-- Thread / AgentRun / AgentEvent；
-- EvidenceBundle / EvidenceSnapshot；
-- Answer / Citation；
-- IssueDraft / IssueCandidate；
-- SandboxIssue / SandboxIssueEvent；
-- ToolConfirmation；
-- IdempotencyRecord；
-- AuditLog；
-- SystemConfig / RetentionPolicy。
-
-LangGraph Checkpoint 同样持久化到 PostgreSQL。Graph State 尽量保存引用 ID，而不是无限累积完整 Query、Evidence 和 Answer Payload。
+- 长链路执行；
+- Retry / Recovery；
+- HITL Resume；
+- Queue Lease；
+- Crash Reaper；
+- Observability；
+- Audit。
 
 ---
 
-## 6. API 概览
+## Evaluation
+
+项目已经接入正式 V0 Evaluation 流程，并完成一次真实 live gate。
+
+### Evaluation Snapshot
+
+| 项目 | 值 |
+|---|---|
+| Evaluation Run | `eval-v0-ws8-v0-live-gate-fa3773c46efd470aa20b03006f85b556` |
+| Dataset | `v0 / Synthetic V0` |
+| Selected Cases | 50 |
+| Scored | 47 |
+| Unscorable | 3 |
+| Infra Failure | 0 |
+| Runner Failure | 0 |
+| Pipeline Status | **COMPLETE** |
+| Product Status | **FAIL** |
+| Model | `deepseek-ai/DeepSeek-V4-Flash` |
+| RAGFlow | `v0.26.4` |
+| Python | `3.12.14` |
+| Git Commit | `13216b8a92272c04942d26d6d0e322bafdf769c8` |
+| Worktree | `dirty=true` |
+
+> 这次 Evaluation 的意义是建立真实基线和暴露系统缺陷，而不是为了得到“全绿”的展示结果。
+> Benchmark 为 Synthetic V0，不代表生产客户数据上的真实准确率；同时该 run 记录为 dirty worktree，因此更适合作为诊断基线，而不是 release benchmark。
+
+### V1 Acceptance Metrics
+
+| Metric | Target | V0 Measured | Result |
+|---|---:|---:|---|
+| Exact-Identifier Hit@10 | ≥ 95% | **13.3%** `2/15` | ❌ |
+| Evidence Recall@10 | ≥ 90% | **37.0%** `10/27` | ❌ |
+| Current-Version Hit Rate | ≥ 95% | **42.9%** `3/7` | ❌ |
+| Citation ID Validity | 100% | **48.0%** `12/25` | ❌ |
+| No-answer Refusal Accuracy | ≥ 90% | **100%** `3/3` | ✅ |
+| Cross-project Evidence | 0 | **0** `0/9` | ✅ |
+| Unconfirmed Issue Creation | 0 | **0** `0/5` | ✅ |
+| Duplicate Issue Side Effects | 0 | **0** `0/2` | ✅ |
+| Critical Regression | 100% | **60.0%** `9/15` | ❌ |
+
+Case-level behavior scoring：
+
+```text
+PASS        24
+FAIL        23
+UNSCORABLE   3
+```
+
+该统计用于辅助诊断，不替代上面的正式 Acceptance Metrics。
+
+### 当前已经验证的安全边界
+
+这次 V0 Evaluation 已验证：
+
+- **Cross-project Evidence = 0**
+- **Unconfirmed Issue Creation = 0**
+- **Duplicate Issue Side Effects = 0**
+- **No-answer Refusal Accuracy = 100%**
+
+这说明当前实现中，项目隔离、未确认写操作阻断、重复副作用控制和缺证据拒答已经形成可执行的安全边界。
+
+但 `critical_regression = 60%`，说明系统尚未满足完整的发布 Gate。
+
+### 当前主要质量问题
+
+V0 基线暴露出的主要问题集中在：
+
+1. **Exact Identifier 检索链路**
+   - 正式指标仅 `2/15`；
+   - 多个 Identifier 类问题最终 Run `FAILED` 或没有形成预期 Evidence；
+   - 当前 Exact Registry 的集成方式需要重新检查。
+
+2. **Evidence Recall**
+   - Recall@10 只有 `37.0%`；
+   - 说明很多正确证据在进入生成阶段之前已经丢失。
+
+3. **Current Version**
+   - 当前版本命中率只有 `42.9%`；
+   - 版本治理的“设计规则”已经存在，但实际检索 / 过滤链仍未稳定达到目标。
+
+4. **Citation**
+   - Citation ID Validity 只有 `48.0%`；
+   - 部分 Case 没有成功进入可生成 Citation 的证据链。
+
+5. **部分运行能力尚未进入 Production Runtime**
+   - fuzzy Identifier suggestion / confirmation；
+   - company-public Run scope；
+   - Issue Key exact lookup。
+
+这 3 类能力在 V0 中对应 3 个 `UNSCORABLE_RUNTIME_SCOPE` Case。
+
+### Ablation Findings
+
+V0 同时执行了受控变体和 shadow ablation。
+
+#### `no_exact_registry`
+
+禁用当前 Exact Registry 路径后：
+
+| Metric | Baseline | Variant | Delta |
+|---|---:|---:|---:|
+| Exact-Identifier Hit@10 | 13.3% | **93.3%** | **+80.0pp** |
+| Evidence Recall@10 | 37.0% | **77.8%** | **+40.7pp** |
+
+这不是“Exact Registry 没有价值”的结论，而是一个非常强的诊断信号：
+
+> **当前 Exact Registry 集成路径正在破坏后续检索效果，优先级高于继续叠加新的 RAG 策略。**
+
+下一步应该优先检查：
+
+```text
+Identifier Extraction
+  ↓
+Registry Resolve Result
+  ↓
+Version / Document Scope
+  ↓
+RAGFlow Filter Composition
+  ↓
+Candidate Merge
+  ↓
+Evidence Governance
+```
+
+重点确认 Exact Match 是否错误缩窄范围、错误绑定版本、错误拼接 filter，或在 Exact Resolver 失败后缺少正确 fallback。
+
+#### `single_round_only`
+
+受控变体中：
+
+- Evidence Recall@10：`37.0% -> 40.7%`
+- Mean Latency：约 `17.1s -> 15.4s`
+
+当前数据不支持“多轮检索已经有效提升质量”的结论，因此在修复基础检索链路前，不应优先增加更多 retrieval round。
+
+#### Shadow Ablation
+
+`pre_governance_shadow` 和 `pre_guard_shadow` 在可匹配的 10 个 Case 中没有观察到显著治理变化。
+
+这说明当前 Evaluation 首先暴露的是**上游召回 / runtime chain 问题**；当正确 Evidence 没有进入候选集时，后面的 Governance 和 Citation Guard 无法弥补召回缺失。
+
+### Evaluation 当前结论
+
+```text
+Safety boundary:      部分已经通过
+Retrieval quality:    未通过
+Version accuracy:     未通过
+Citation validity:    未通过
+Release gate:         未通过
+```
+
+当前工程优先级：
+
+```text
+P0  修复 Exact Identifier → Retrieval 集成回归
+P0  修复基础 Evidence Recall
+P0  修复 Current-Version 过滤 / 选择链
+P1  修复 Citation ID 生成与绑定
+P1  补齐 Issue Key exact lookup
+P1  补齐 fuzzy Identifier confirmation
+P2  再评估多轮检索 / Query Rewrite 等增强策略
+```
+
+---
+
+## 数据与状态边界
+
+PostgreSQL 不只是“聊天历史数据库”，而是整个系统的业务事实中心。
+
+主要实体包括：
+
+- `Client / Project`
+- `ProjectMembership / KnowledgeSpace`
+- `Document / DocumentVersion / ACL`
+- `DocumentIdentifier`
+- `BackgroundJob / IngestionJob`
+- `Thread / AgentRun / AgentEvent`
+- `EvidenceBundle / EvidenceSnapshot`
+- `Answer / Citation`
+- `IssueDraft / IssueCandidate`
+- `SandboxIssue / SandboxIssueEvent`
+- `ToolConfirmation`
+- `IdempotencyRecord`
+- `AuditLog`
+- `SystemConfig / RetentionPolicy`
+
+LangGraph Checkpoint 同样持久化到 PostgreSQL。
+
+Graph State 尽量保存 ID / Reference，而不是无限累积完整 Query、Evidence 和 Answer Payload。
+
+---
+
+## API 概览
 
 ### Health / Metrics
 
-```text
-GET  /live
-GET  /ready
-GET  /metrics
+```http
+GET /live
+GET /ready
+GET /metrics
 ```
 
 ### Document Lifecycle
 
-```text
+```http
 POST   /api/v1/documents
 POST   /api/v1/documents/{version_id}/submit-review
 POST   /api/v1/documents/{version_id}/approve
@@ -319,7 +546,7 @@ DELETE /api/v1/documents/{version_id}
 
 ### Agent Runs
 
-```text
+```http
 POST /api/v1/runs
 POST /api/v1/runs/{run_id}/resume
 GET  /api/v1/runs/{run_id}
@@ -332,36 +559,45 @@ GET  /api/v1/runs/{run_id}/events
 Authorization: Bearer <JWT>
 ```
 
-JWT 负责认证用户身份；角色和项目访问权限不会接受客户端自行声明，而是从数据库中的 Membership 重新计算。
+JWT 只负责认证。角色和项目访问权限由服务器从 Membership 重新计算，不接受客户端直接覆盖。
 
-启动 API 后可以通过 FastAPI OpenAPI 页面查看完整请求模型：
+启动 API 后可访问：
 
 ```text
 http://localhost:8000/docs
 ```
 
+查看 FastAPI OpenAPI 文档。
+
 ---
 
-## 7. 快速启动
+## 快速启动
 
-### 7.1 环境要求
+### 环境要求
 
-- Python `3.12.x`；
-- `uv`；
-- Docker / Docker Compose；
-- PostgreSQL 16（Compose 已包含）；
-- 可访问的 RAGFlow `v0.26.4`；
-- 支持 `POST /chat/completions` 和 strict JSON Schema response format 的 OpenAI-compatible LLM Provider。
+- Python `3.12.x`
+- `uv`
+- Docker / Docker Compose
+- PostgreSQL 16（Compose 已包含）
+- RAGFlow `v0.26.4`
+- 支持 `POST /chat/completions` 与 strict JSON Schema response format 的 OpenAI-compatible LLM Provider
 
-> `compose.yaml` 只启动 PostgreSQL、API 和 Worker。RAGFlow 是 companion service，需要单独运行，并通过 `RAGFLOW_BASE_URL` 连接。
+> `compose.yaml` 只负责 PostgreSQL、API 和 Worker。RAGFlow 作为 companion service 独立运行。
 
-### 7.2 配置
+### 1. Clone
+
+```bash
+git clone https://github.com/qidai11/it-outsourcing-knowledge-agent.git
+cd it-outsourcing-knowledge-agent
+```
+
+### 2. 配置环境变量
 
 ```bash
 cp .env.example .env
 ```
 
-至少检查以下配置：
+至少检查：
 
 ```dotenv
 DATABASE_URL=postgresql+asyncpg://project_agent:project_agent@localhost:5432/project_agent
@@ -381,13 +617,13 @@ JWT_AUDIENCE=project-agent-api
 
 不要提交真实 `.env`、API Key 或 JWT Secret。
 
-### 7.3 安装开发依赖
+### 3. 安装开发依赖
 
 ```bash
 uv sync --all-groups
 ```
 
-### 7.4 使用 Docker Compose 启动
+### 4. Docker Compose 启动
 
 ```bash
 docker compose up -d postgres
@@ -397,16 +633,17 @@ docker compose run --rm app-api alembic upgrade head
 docker compose up -d --build app-api app-worker
 ```
 
-检查服务：
+检查：
 
 ```bash
 docker compose ps
+
 curl -fsS http://127.0.0.1:8000/live
 curl -fsS http://127.0.0.1:8000/ready
 curl -fsS http://127.0.0.1:9101/metrics >/dev/null
 ```
 
-正常的 readiness 响应：
+正常 readiness：
 
 ```json
 {
@@ -416,16 +653,20 @@ curl -fsS http://127.0.0.1:9101/metrics >/dev/null
 }
 ```
 
-### 7.5 本机开发方式
+### 5. 本机开发
 
 如果 PostgreSQL、RAGFlow 和 LLM Provider 已经可用：
 
 ```bash
 uv run alembic upgrade head
-uv run uvicorn project_agent.main:app --host 0.0.0.0 --port 8000 --reload
+
+uv run uvicorn project_agent.main:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --reload
 ```
 
-另开一个终端启动 Worker：
+另开终端启动 Worker：
 
 ```bash
 uv run project-agent-worker
@@ -433,20 +674,25 @@ uv run project-agent-worker
 
 ---
 
-## 8. 项目目录
+## 项目目录
 
 ```text
 .
 ├── src/project_agent/
-│   ├── agent/                  # LangGraph graphs、nodes、state、policy
+│   ├── agent/                  # LangGraph graphs / nodes / state / policy
 │   ├── api/                    # FastAPI routes / dependencies
-│   ├── application/            # ports、services、use cases
+│   ├── application/            # ports / services / use cases
 │   ├── domain/                 # 核心业务模型与枚举
 │   ├── infrastructure/         # DB / RAGFlow / LLM / object store / tracker
-│   ├── observability/          # logging、metrics、cost、sanitization
+│   ├── observability/          # logging / metrics / cost / sanitization
 │   ├── runtime/                # API / QA / Issue / Worker production wiring
-│   └── workers/                # queue handlers、retry、reaper、run execution
+│   └── workers/                # queue / retry / reaper / run execution
+│
+├── evaluation/
+│   └── datasets/v0/            # Synthetic V0 benchmark dataset
+│
 ├── migrations/                 # Alembic migrations
+│
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -454,11 +700,13 @@ uv run project-agent-worker
 │   ├── e2e/
 │   ├── reliability/
 │   └── security/
+│
 ├── docs/
-│   ├── business/               # 产品边界、权限、文档与 Issue 规则
+│   ├── business/               # 产品边界、权限、文档、Issue 规则
 │   ├── adr/                    # Architecture Decision Records
 │   └── runbooks/               # RAGFlow、幂等、live gates 等运行手册
-├── scripts/                    # checks、seed、live acceptance scripts
+│
+├── scripts/
 ├── compose.yaml
 ├── Dockerfile
 ├── alembic.ini
@@ -467,7 +715,7 @@ uv run project-agent-worker
 
 ---
 
-## 9. 测试与质量检查
+## 测试与质量检查
 
 静态检查：
 
@@ -483,25 +731,27 @@ git diff --check
 uv run pytest
 ```
 
-仓库也提供统一检查入口：
+统一检查入口：
 
 ```bash
 python scripts/run_checks.py
 ```
 
-部分 PostgreSQL / RAGFlow / LLM provider 测试属于显式 live gate，需要对应外部依赖和环境变量，不应把因环境未启用而 skip 的测试当成 live acceptance 结果。
+部分 PostgreSQL / RAGFlow / LLM Provider 测试属于显式 live gate，需要真实外部依赖和环境变量。
+
+**被 skip 的 live test 不等于 live acceptance 已经通过。**
 
 ---
 
-## 10. 可观测性
+## 可观测性
 
-API 暴露 Prometheus metrics：
+API 暴露：
 
-```text
+```http
 GET /metrics
 ```
 
-Worker 默认在：
+Worker 默认暴露：
 
 ```text
 http://localhost:9101/metrics
@@ -519,55 +769,68 @@ http://localhost:9101/metrics
 - Issue confirmation；
 - Issue create / idempotency / reconciliation outcome。
 
-日志使用结构化 JSON，并对异常信息和敏感字段进行 sanitization。Run 还会持久化模型别名、Prompt 版本/Hash、Token、检索轮次以及配置了价格时的估算成本。
+日志使用结构化 JSON，并对异常信息和敏感字段执行 sanitization。
+
+Run 还会记录：
+
+- model alias；
+- prompt version / hash；
+- token usage；
+- retrieval rounds；
+- 配置价格后的 estimated cost；
+- 状态变化与关键事件。
 
 ---
 
-## 11. 安全与可靠性原则
+## 安全与可靠性原则
 
-项目把以下条件作为硬约束，而不是依赖模型自行遵守：
+项目把下面这些条件当作程序硬约束，而不是“希望模型遵守”的 Prompt：
 
 ```text
 跨项目 Evidence            = 0
 未授权项目访问             = 0
-非 PUBLISHED 文档普通召回  = 0
+非允许状态文档普通召回     = 0
 跨项目 Citation            = 0
 未确认 Issue 创建          = 0
 重复创建副作用             = 0
 ```
 
-其他关键规则：
+其他规则：
 
 - 请求体不能覆盖服务器计算出的角色；
 - 过期 Membership 按无权限处理；
 - Viewer 不能创建 Issue；
-- LLM 不能直接批准或发布文档；
+- LLM 不能直接批准 / 发布正式文档；
 - LLM 不能自动认定真正的 duplicate Issue；
-- 外部文本不能改变服务端权限边界；
+- 外部文档 / Prompt Injection 不能改变服务端权限边界；
 - `legal_hold=true` 时禁止物理删除相关数据；
-- Provider 调用使用有界重试，而不是无限重试。
+- Provider 使用有界 Retry，不执行无限重试；
+- 写操作必须经过明确确认和幂等控制。
 
 ---
 
-## 12. 当前实现边界
+## 当前实现边界
 
-V1 已实现的核心后端能力包括：
+### V1 已实现
 
 - 多项目权限隔离；
 - 文档上传、审核、批准、发布和删除生命周期；
 - 项目独立知识空间；
-- Exact Identifier Registry；
+- Exact Identifier Registry 基础能力；
 - RAGFlow 检索适配；
 - Structured LLM QA；
 - Evidence / Citation 治理；
 - QA / Issue Lookup / Issue Create LangGraph；
 - Durable Run + SSE；
 - PostgreSQL Job Queue + Worker；
-- Sandbox Issue 查询和人工确认后的幂等创建；
+- Sandbox Issue 查询；
+- 人工确认后的幂等创建；
+- Unknown Result Reconciliation；
 - JSON Logging + Prometheus Metrics；
-- Docker Compose 运行基线。
+- Docker Compose 运行基线；
+- Synthetic V0 Evaluation / Acceptance Gate。
 
-以下能力**不属于当前 V1**：
+### 当前不包含
 
 - 生产 Jira / 禅道 / 飞书项目写入；
 - 客户 Guest / SaaS 多租户；
@@ -582,38 +845,39 @@ V1 已实现的核心后端能力包括：
 - Kubernetes；
 - Redis / Celery 等额外任务队列。
 
-这些边界是有意保留的：V1 优先验证项目知识检索、证据可信度、权限隔离和受控工单闭环，而不是扩大技术栈。
+这些边界是有意保留的。
+
+V1 优先验证：
+
+```text
+Project Isolation
+      +
+Knowledge Retrieval
+      +
+Evidence Governance
+      +
+Controlled Side Effects
+      +
+Durable Execution
+      +
+Evaluation
+```
+
+而不是不断扩大技术栈。
 
 ---
 
-## 13. Evaluation 状态
+## 设计原则
 
-项目已经定义了正式评测目标，但 README 不把这些目标写成当前实测成绩。
+这个项目最终想验证的不是：
 
-主要目标包括：
+> Agent 能不能调用很多工具？
 
-| Metric                     | V1 Target |
-| -------------------------- | --------: |
-| Exact-Identifier Hit@10    |     ≥ 95% |
-| Evidence Recall@10         |     ≥ 90% |
-| Current-Version Hit Rate   |     ≥ 95% |
-| Citation ID Validity       |      100% |
-| 无答案拒答准确率           |     ≥ 90% |
-| Cross-project Evidence     |         0 |
-| Unconfirmed Issue Creation |         0 |
-| Duplicate Side Effects     |         0 |
+而是：
 
-正式 Benchmark / Runner / Metrics / Ablation / Report 应以独立 Evaluation 流程产出的结果为准；在评测完成前，不应把目标值描述成项目已经取得的性能成绩。
+> **如何让一个面向真实企业交付场景的 Agent，在多项目、多版本、多权限和有副作用操作的条件下，仍然给出可追溯、可复核、可恢复的结果。**
 
----
-
-## 14. 设计原则总结
-
-这个项目最终想验证的不是「Agent 能不能调用很多工具」，而是：
-
-> **如何让一个面向真实企业交付场景的 Agent，在多项目、多版本、多权限和有副作用操作的条件下，仍然能够给出可追溯、可复核、可恢复的结果。**
-
-因此系统把能力划分为两类：
+因此能力被明确拆成两类：
 
 ```text
 LLM 擅长的部分
@@ -636,4 +900,6 @@ LLM 擅长的部分
 └── Audit / Observability
 ```
 
-这也是整个项目最核心的工程取舍：**把概率性的模型能力放在确定性的业务约束之内。**
+核心工程取舍是：
+
+> **把概率性的模型能力放在确定性的业务约束之内，并用 Evaluation 持续验证这些约束是否真的成立。**
