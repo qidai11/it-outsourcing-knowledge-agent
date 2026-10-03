@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -24,6 +25,18 @@ class ExactResolutionResult(BaseModel):
 
     resolutions: tuple[IdentifierResolution, ...]
     constrained_document_version_ids: tuple[UUID, ...]
+
+
+class IdentifierResolutionPort(Protocol):
+    """Small injectable seam for exact identifier resolution."""
+
+    async def resolve(
+        self,
+        *,
+        project_id: UUID,
+        analysis: QueryAnalysis,
+        allowed_document_version_ids: tuple[UUID, ...],
+    ) -> ExactResolutionResult: ...
 
 
 class ExactIdentifierResolver:

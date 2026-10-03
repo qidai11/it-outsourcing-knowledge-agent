@@ -26,6 +26,30 @@ class StubObjectStore:
         )
 
 
+def _assert_scoped_ingestion_lookup(
+    request: httpx.Request, *, project_id: str, document_version_id: str
+) -> None:
+    """Ensure ingestion checks only its own project and version before uploading."""
+    assert request.url.params["page"] == "1"
+    assert request.url.params["page_size"] == "100"
+    assert "id" not in request.url.params
+    assert json.loads(request.url.params["metadata_condition"]) == {
+        "logic": "and",
+        "conditions": [
+            {
+                "name": "project_agent_project_id",
+                "comparison_operator": "=",
+                "value": project_id,
+            },
+            {
+                "name": "project_agent_document_version_id",
+                "comparison_operator": "=",
+                "value": document_version_id,
+            },
+        ],
+    }
+
+
 @pytest.mark.asyncio
 async def test_ingest_uploads_metadata_before_parse_and_status_maps_done() -> None:
     calls: list[tuple[str, str]] = []
@@ -63,6 +87,17 @@ async def test_ingest_uploads_metadata_before_parse_and_status_maps_done() -> No
         if request.method == "POST" and request.url.path == "/api/v1/datasets/dataset-alpha/chunks":
             assert json.loads(request.content) == {"document_ids": ["doc-alpha"]}
             return httpx.Response(200, json={"code": 0})
+        if (
+            request.method == "GET"
+            and request.url.path == "/api/v1/datasets/dataset-alpha/documents"
+            and "metadata_condition" in request.url.params
+        ):
+            _assert_scoped_ingestion_lookup(
+                request,
+                project_id="PRJ-RETAIL-ALPHA",
+                document_version_id="version-alpha-1",
+            )
+            return httpx.Response(200, json={"code": 0, "data": {"docs": []}})
         if (
             request.method == "GET"
             and request.url.path == "/api/v1/datasets/dataset-alpha/documents"
@@ -104,6 +139,9 @@ async def test_ingest_uploads_metadata_before_parse_and_status_maps_done() -> No
         "project_agent_document_version_id": "version-alpha-1",
         "authority_level": "requirement_baseline",
     }
+    assert calls.index(("GET", "/api/v1/datasets/dataset-alpha/documents")) < calls.index(
+        ("POST", "/api/v1/datasets/dataset-alpha/documents")
+    )
     assert calls.index(("PUT", "/api/v1/datasets/dataset-alpha/documents/doc-alpha")) < calls.index(
         ("POST", "/api/v1/datasets/dataset-alpha/chunks")
     )
@@ -111,7 +149,17 @@ async def test_ingest_uploads_metadata_before_parse_and_status_maps_done() -> No
 
 @pytest.mark.asyncio
 async def test_fresh_adapter_ingest_binds_dataset_and_rejects_cross_project_reuse() -> None:
+    calls: list[tuple[str, str]] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.method == "GET" and request.url.path == "/api/v1/datasets/dataset-a/documents":
+            _assert_scoped_ingestion_lookup(
+                request,
+                project_id="PRJ-RETAIL-ALPHA",
+                document_version_id="version-alpha-1",
+            )
+            return httpx.Response(200, json={"code": 0, "data": {"docs": []}})
         if request.method == "POST" and request.url.path == "/api/v1/datasets/dataset-a/documents":
             return httpx.Response(200, json={"code": 0, "data": [{"id": "doc-a"}]})
         if (
@@ -141,9 +189,12 @@ async def test_fresh_adapter_ingest_binds_dataset_and_rejects_cross_project_reus
         )
         await adapter.ingest(request)
         assert adapter.space_ids_for_project("PRJ-RETAIL-ALPHA") == ("dataset-a",)
+        document_path = "/api/v1/datasets/dataset-a/documents"
+        assert calls.index(("GET", document_path)) < calls.index(("POST", document_path))
 
         from project_agent.infrastructure.ragflow.errors import RagflowProjectIsolationError
 
+        calls_before_denied_ingest = len(calls)
         with pytest.raises(RagflowProjectIsolationError):
             await adapter.ingest(
                 KnowledgeIngestionRequest(
@@ -154,6 +205,7 @@ async def test_fresh_adapter_ingest_binds_dataset_and_rejects_cross_project_reus
                     metadata={"filename": "beta.txt"},
                 )
             )
+        assert len(calls) == calls_before_denied_ingest  # Denied scope makes no HTTP requests.
 
 
 @pytest.mark.asyncio

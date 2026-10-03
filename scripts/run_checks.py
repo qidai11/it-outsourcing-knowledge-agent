@@ -5,7 +5,6 @@ import subprocess
 import sys
 from collections.abc import Sequence
 
-
 COMMANDS: tuple[tuple[str, ...], ...] = (
     (sys.executable, "scripts/validate_task0.py"),
     ("uv", "run", "ruff", "check", "src", "tests"),

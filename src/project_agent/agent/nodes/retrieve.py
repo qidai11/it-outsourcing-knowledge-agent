@@ -47,6 +47,7 @@ async def retrieve_node(
             project_id=UUID(state["project_id"]),
             query_text=plan.original_query,
             chunks=[],
+            retrieval_round=current_round + 1,
         )
         return {
             "evidence_bundle_id": str(bundle_id),
@@ -61,6 +62,7 @@ async def retrieve_node(
         project_id=UUID(state["project_id"]),
         query_text=plan.original_query,
         chunks=chunks,
+        retrieval_round=current_round + 1,
     )
     return {
         "evidence_bundle_id": str(bundle_id),

@@ -92,6 +92,24 @@ class RagflowAdapter:
         """Seed one DB-authorized dataset binding for Worker-side retrieval."""
         self._bind_space(project_id, dataset_id)
 
+    async def delete_owned_space(
+        self, *, project_id: str, dataset_id: str, expected_name: str
+    ) -> None:
+        """Delete a bound dataset only after verifying its exact provider name and ID."""
+        self._assert_space_for_project(project_id, dataset_id)
+        actual = await self._find_visible_dataset_by_name(expected_name)
+        if actual is None:
+            return
+        if str(actual.get("id")) != dataset_id:
+            raise RagflowProjectIsolationError(
+                f"dataset name {expected_name!r} does not match bound ID {dataset_id!r}"
+            )
+        await self._client.request_data(
+            "DELETE", "/api/v1/datasets", json={"ids": [dataset_id]}
+        )
+        self._space_to_project.pop(dataset_id, None)
+        self._project_to_spaces[project_id].discard(dataset_id)
+
     async def ensure_space(self, request: EnsureKnowledgeSpaceRequest) -> KnowledgeSpace:
         self._validate_baseline_binding(request.project_id, request.space_key)
         existing = await self._find_visible_dataset_by_name(request.space_key)
@@ -147,6 +165,52 @@ class RagflowAdapter:
         self._bind_space(request.project_id, request.knowledge_space_id)
         if self._object_store is None:
             raise RagflowConfigurationError("Knowledge ingestion requires an ObjectStorePort")
+
+        existing_documents = await self._list_documents(
+            request.knowledge_space_id,
+            metadata_condition={
+                "logic": "and",
+                "conditions": [
+                    {
+                        "name": PROJECT_METADATA_FIELD,
+                        "comparison_operator": "=",
+                        "value": request.project_id,
+                    },
+                    {
+                        "name": DOCUMENT_VERSION_METADATA_FIELD,
+                        "comparison_operator": "=",
+                        "value": request.document_version_id,
+                    },
+                ],
+            },
+        )
+
+        for existing in existing_documents:
+            mapping = self._mapping_from_document(existing)
+
+            if mapping == _DocumentMapping(
+                    request.project_id,
+                    request.document_version_id,
+                    {
+                        key: value
+                        for key, value in request.metadata.items()
+                        if key not in _RESERVED_METADATA
+                    },
+            ):
+                provider_document_id = self._required_string(
+                    existing,
+                    "id",
+                    context="existing document",
+                )
+
+                return KnowledgeIngestionReceipt(
+                    ingestion_job_id=self._encode_ingestion_job_id(
+                        request.knowledge_space_id,
+                        provider_document_id,
+                    ),
+                    project_id=request.project_id,
+                    document_version_id=request.document_version_id,
+                )
 
         payload = await self._object_store.get(request.object_key)
         filename = self._safe_filename(

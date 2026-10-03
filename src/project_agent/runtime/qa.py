@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from project_agent.agent.graph import QAGraphDependencies, build_project_qa_graph
 from project_agent.agent.nodes.analyze_query import QueryAnalysisService
-from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
+from project_agent.agent.nodes.resolve_identifiers import (
+    ExactIdentifierResolver,
+    IdentifierResolutionPort,
+)
 from project_agent.agent.policies.access import ProjectAccessPolicy
 from project_agent.application.ports.llm import StructuredLLMPort, StructuredLLMUsagePort
 from project_agent.application.ports.run_graph import RunGraphExecutor, RunGraphOutcome
@@ -33,6 +38,22 @@ from project_agent.infrastructure.db.repositories.system_config import (
 )
 from project_agent.infrastructure.ragflow.adapter import RagflowAdapter
 
+IdentifierResolverFactory = Callable[[IdentifierRegistryService], IdentifierResolutionPort]
+
+
+def _default_exact_resolver_factory(
+    registry: IdentifierRegistryService,
+) -> IdentifierResolutionPort:
+    return ExactIdentifierResolver(registry)
+
+
+@dataclass(frozen=True, slots=True)
+class QARuntimeComposition:
+    """Evaluation-safe QA composition knobs; security services are intentionally absent."""
+
+    exact_resolver_factory: IdentifierResolverFactory = _default_exact_resolver_factory
+    allow_second_round: bool = True
+
 
 class ProductionQARunExecutor(RunGraphExecutor):
     """Build and execute one production QA graph with a fresh application DB session."""
@@ -46,6 +67,7 @@ class ProductionQARunExecutor(RunGraphExecutor):
         knowledge: RagflowAdapter,
         llm: StructuredLLMPort,
         llm_usage: StructuredLLMUsagePort,
+        composition: QARuntimeComposition | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
@@ -53,6 +75,7 @@ class ProductionQARunExecutor(RunGraphExecutor):
         self._knowledge = knowledge
         self._llm = llm
         self._llm_usage = llm_usage
+        self._composition = composition or QARuntimeComposition()
 
     async def execute(self, run: RunRecord) -> RunGraphOutcome:
         if run.business_mode is not RunBusinessMode.QA:
@@ -100,7 +123,7 @@ class ProductionQARunExecutor(RunGraphExecutor):
         return QAGraphDependencies(
             authorization=authorization,
             query_analysis=QueryAnalysisService(extractor),
-            exact_resolver=ExactIdentifierResolver(registry),
+            exact_resolver=self._composition.exact_resolver_factory(registry),
             knowledge=self._knowledge,
             access_policy=ProjectAccessPolicy(),
             prompt_config=PromptConfigService(
@@ -115,6 +138,7 @@ class ProductionQARunExecutor(RunGraphExecutor):
             llm_usage=self._llm_usage,
             store=SqlAlchemyQAGraphStore(session),
             model_alias=self._settings.llm_model_alias,
+            allow_second_round=self._composition.allow_second_round,
         )
 
 
@@ -134,6 +158,7 @@ def build_production_qa_executor(
     knowledge: RagflowAdapter,
     llm: StructuredLLMPort,
     llm_usage: StructuredLLMUsagePort,
+    composition: QARuntimeComposition | None = None,
 ) -> RunGraphExecutor:
     return ProductionQARunExecutor(
         settings=settings,
@@ -142,4 +167,5 @@ def build_production_qa_executor(
         knowledge=knowledge,
         llm=llm,
         llm_usage=llm_usage,
+        composition=composition,
     )

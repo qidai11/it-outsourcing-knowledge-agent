@@ -1,0 +1,308 @@
+"""Deterministic identifiers and PostgreSQL materialization for WS8 fixtures."""
+
+import json
+from collections.abc import Mapping
+from datetime import datetime
+from typing import Any
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from project_agent.evaluation.dataset import EvaluationDataset
+from project_agent.infrastructure.db.models.schema import (
+    ClientModel,
+    DocumentModel,
+    DocumentVersionModel,
+    ProjectKnowledgeSpaceModel,
+    ProjectMembershipModel,
+    ProjectModel,
+    SandboxIssueModel,
+    SandboxProjectModel,
+)
+
+
+PROJECT_CODES = ("PRJ-RETAIL-ALPHA", "PRJ-LOGISTICS-BETA")
+
+
+def fixture_uuid(
+    dataset_version: str,
+    logical_key: str,
+    *,
+    evaluation_namespace: str | UUID,
+) -> UUID:
+    """Derive a stable UUIDv5 isolated to the requested evaluation namespace."""
+    namespace = (
+        evaluation_namespace
+        if isinstance(evaluation_namespace, UUID)
+        else uuid5(
+            NAMESPACE_URL,
+            f"it-outsourcing-knowledge-agent/ws8/evaluation/{evaluation_namespace}",
+        )
+    )
+    return uuid5(namespace, f"{dataset_version}\0{logical_key}")
+
+
+def _read_fixture(dataset: EvaluationDataset, name: str) -> dict[str, Any]:
+    path = dataset.root / "fixtures" / name
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"expected fixture object: {path}")
+    return value
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _root_doc_code(code: str, documents: Mapping[str, Any]) -> str:
+    current = code
+    while documents[current].supersedes_doc_code is not None:
+        current = documents[current].supersedes_doc_code
+    return current
+
+
+def _version_no(code: str, documents: Mapping[str, Any]) -> int:
+    number = 1
+    current = code
+    while documents[current].supersedes_doc_code is not None:
+        number += 1
+        current = documents[current].supersedes_doc_code
+    return number
+
+
+async def prepare_v0(
+    *,
+    dataset: EvaluationDataset,
+    evaluation_namespace: str,
+    session_factory: async_sessionmaker[AsyncSession],
+    ragflow_adapter: object | None,
+) -> Mapping[str, Any]:
+    """Materialize the PostgreSQL-owned portion of frozen benchmark V0."""
+    del ragflow_adapter
+
+    identities = _read_fixture(dataset, "identities.json")["identities"]
+    memberships = _read_fixture(dataset, "memberships.json")["memberships"]
+    issues = _read_fixture(dataset, "sandbox-issues.json")["issues"]
+
+    user_ids = {item["alias"]: UUID(item["user_id"]) for item in identities}
+    company_id = fixture_uuid(
+        dataset.dataset_version,
+        "company",
+        evaluation_namespace=evaluation_namespace,
+    )
+    client_ids = {
+        code: fixture_uuid(
+            dataset.dataset_version,
+            f"client:{code}",
+            evaluation_namespace=evaluation_namespace,
+        )
+        for code in PROJECT_CODES
+    }
+    project_ids = {
+        code: fixture_uuid(
+            dataset.dataset_version,
+            f"project:{code}",
+            evaluation_namespace=evaluation_namespace,
+        )
+        for code in PROJECT_CODES
+    }
+    knowledge_space_ids = {
+        code: fixture_uuid(
+            dataset.dataset_version,
+            f"knowledge-space:{code}",
+            evaluation_namespace=evaluation_namespace,
+        )
+        for code in PROJECT_CODES
+    }
+    sandbox_project_ids = {
+        code: fixture_uuid(
+            dataset.dataset_version,
+            f"sandbox-project:{code}",
+            evaluation_namespace=evaluation_namespace,
+        )
+        for code in PROJECT_CODES
+    }
+
+    project_docs = {
+        code: doc
+        for code, doc in dataset.documents_by_code.items()
+        if doc.project_code in project_ids
+    }
+    document_ids = {
+        code: fixture_uuid(
+            dataset.dataset_version,
+            f"document:{_root_doc_code(code, project_docs)}",
+            evaluation_namespace=evaluation_namespace,
+        )
+        for code in project_docs
+    }
+    document_version_ids = {
+        code: fixture_uuid(
+            dataset.dataset_version,
+            f"document-version:{code}",
+            evaluation_namespace=evaluation_namespace,
+        )
+        for code in project_docs
+    }
+
+    async with session_factory() as session:
+        for code in PROJECT_CODES:
+            manager = next(
+                item["user_id"]
+                for item in memberships
+                if item["project_code"] == code and item["expected_current"]
+            )
+            await session.merge(
+                ClientModel(
+                    id=client_ids[code],
+                    company_id=company_id,
+                    name=f"WS8 V0 {code}",
+                )
+            )
+            await session.merge(
+                ProjectModel(
+                    id=project_ids[code],
+                    company_id=company_id,
+                    client_id=client_ids[code],
+                    code=code,
+                    name=f"WS8 V0 {code}",
+                    manager_id=UUID(manager),
+                )
+            )
+            await session.merge(
+                ProjectKnowledgeSpaceModel(
+                    id=knowledge_space_ids[code],
+                    project_id=project_ids[code],
+                    provider="ragflow",
+                    external_space_id=f"{evaluation_namespace}:{code}",
+                )
+            )
+            await session.merge(
+                SandboxProjectModel(
+                    id=sandbox_project_ids[code],
+                    project_id=project_ids[code],
+                    external_key=f"ws8-{sandbox_project_ids[code].hex}",
+                    name=f"WS8 V0 {code}",
+                )
+            )
+
+        for item in memberships:
+            valid_from = _parse_datetime(item["valid_from"])
+            if valid_from is None:
+                raise ValueError("membership valid_from must be present")
+            await session.merge(
+                ProjectMembershipModel(
+                    id=UUID(item["membership_id"]),
+                    project_id=project_ids[item["project_code"]],
+                    user_id=UUID(item["user_id"]),
+                    role=item["role"],
+                    valid_from=valid_from,
+                    valid_to=_parse_datetime(item["valid_to"]),
+                )
+            )
+
+        created_document_ids: set[UUID] = set()
+        for code, doc in project_docs.items():
+            document_id = document_ids[code]
+            if document_id not in created_document_ids:
+                await session.merge(
+                    DocumentModel(
+                        id=document_id,
+                        company_id=company_id,
+                        project_id=project_ids[doc.project_code],
+                        document_category=doc.document_category,
+                        title=doc.title,
+                    )
+                )
+                created_document_ids.add(document_id)
+
+        ordered_codes = sorted(project_docs, key=lambda code: _version_no(code, project_docs))
+        for code in ordered_codes:
+            doc = project_docs[code]
+            supersedes = doc.supersedes_doc_code
+            await session.merge(
+                DocumentVersionModel(
+                    id=document_version_ids[code],
+                    document_id=document_ids[code],
+                    version_no=_version_no(code, project_docs),
+                    version_label=doc.version_label or "unversioned",
+                    authority_level=doc.authority_level,
+                    lifecycle_status=doc.lifecycle_status,
+                    supersedes_version_id=(
+                        document_version_ids[supersedes] if supersedes is not None else None
+                    ),
+                    source_uri=doc.source_path,
+                    content_hash=doc.sha256,
+                    created_by=next(iter(user_ids.values())),
+                )
+            )
+
+        for item in issues:
+            await session.merge(
+                SandboxIssueModel(
+                    id=UUID(item["issue_id"]),
+                    project_id=project_ids[item["project_code"]],
+                    sandbox_project_id=sandbox_project_ids[item["project_code"]],
+                    issue_key=item["issue_key"],
+                    title=item["title"],
+                    description=item["description"],
+                    issue_type=item["issue_type"],
+                    priority=item["priority"],
+                    status=item["status"],
+                    module=item["module"],
+                    error_code=item["error_code"],
+                    environment=item["environment"],
+                    reporter_id=user_ids[item["reporter_alias"]],
+                    assignee_id=(
+                        user_ids[item["assignee_alias"]]
+                        if item["assignee_alias"] is not None
+                        else None
+                    ),
+                    source=item["source"],
+                    client_request_id=item["client_request_id"],
+                )
+            )
+        await session.commit()
+
+    return {
+        "evaluation_namespace": evaluation_namespace,
+        "company_id": company_id,
+        "client_ids": client_ids,
+        "project_ids": project_ids,
+        "user_ids": user_ids,
+        "membership_ids": {
+            item["fact_id"]: UUID(item["membership_id"]) for item in memberships
+        },
+        "document_ids": document_ids,
+        "document_version_ids": document_version_ids,
+        "knowledge_space_ids": knowledge_space_ids,
+        "sandbox_issue_ids": {
+            item["issue_key"]: UUID(item["issue_id"]) for item in issues
+        },
+        "integrity": dict(dataset.integrity),
+    }
+
+
+async def cleanup_v0(
+    *,
+    evaluation_namespace: str,
+    session_factory: async_sessionmaker[AsyncSession],
+    ragflow_adapter: object | None,
+) -> None:
+    """Delete only rows owned by this deterministic V0 evaluation namespace."""
+    del ragflow_adapter
+    project_ids = [
+        fixture_uuid("v0", f"project:{code}", evaluation_namespace=evaluation_namespace)
+        for code in PROJECT_CODES
+    ]
+    client_ids = [
+        fixture_uuid("v0", f"client:{code}", evaluation_namespace=evaluation_namespace)
+        for code in PROJECT_CODES
+    ]
+    async with session_factory() as session:
+        await session.execute(delete(ProjectModel).where(ProjectModel.id.in_(project_ids)))
+        await session.execute(delete(ClientModel).where(ClientModel.id.in_(client_ids)))
+        await session.commit()

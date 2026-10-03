@@ -1,0 +1,55 @@
+{
+  "data_provenance": "synthetic",
+  "dataset_version": "v0",
+  "identities": [
+    {
+      "alias": "u-alpha-dev",
+      "enabled": true,
+      "jwt_sub": "7694cd41-b674-54d4-a46a-65bfbea63ba3",
+      "user_id": "7694cd41-b674-54d4-a46a-65bfbea63ba3"
+    },
+    {
+      "alias": "u-alpha-qa",
+      "enabled": true,
+      "jwt_sub": "a28d8141-fd1c-515d-a47d-3388e102c29f",
+      "user_id": "a28d8141-fd1c-515d-a47d-3388e102c29f"
+    },
+    {
+      "alias": "u-beta-dev",
+      "enabled": true,
+      "jwt_sub": "0a4f930d-98d7-5b24-b91c-bb521a71a9da",
+      "user_id": "0a4f930d-98d7-5b24-b91c-bb521a71a9da"
+    },
+    {
+      "alias": "u-beta-qa",
+      "enabled": true,
+      "jwt_sub": "8da45f58-f213-5db1-b7c6-080855fc4753",
+      "user_id": "8da45f58-f213-5db1-b7c6-080855fc4753"
+    },
+    {
+      "alias": "u-alpha-viewer",
+      "enabled": true,
+      "jwt_sub": "e13a3e39-37b0-53e4-9ae4-7a55a6b23f62",
+      "user_id": "e13a3e39-37b0-53e4-9ae4-7a55a6b23f62"
+    },
+    {
+      "alias": "u-expired",
+      "enabled": true,
+      "jwt_sub": "5113295a-42ed-5351-a520-148208dc3f28",
+      "user_id": "5113295a-42ed-5351-a520-148208dc3f28"
+    },
+    {
+      "alias": "u-outsider",
+      "enabled": true,
+      "jwt_sub": "84f3bcd5-98c1-53bc-801b-19482001bb2c",
+      "user_id": "84f3bcd5-98c1-53bc-801b-19482001bb2c"
+    }
+  ],
+  "schema_version": "fixture-identities-v1",
+  "uuid_strategy": {
+    "algorithm": "UUIDv5",
+    "name_template": "user:{alias}",
+    "namespace_uuid": "659fce65-2001-53b5-88ce-66673ece8fad",
+    "purpose": "stable evaluation JWT sub / user_id mapping only"
+  }
+}

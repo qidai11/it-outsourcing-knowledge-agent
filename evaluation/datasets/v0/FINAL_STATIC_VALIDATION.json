@@ -1,0 +1,188 @@
+{
+  "blocking_failures": {
+    "authorization_fixture_errors": false,
+    "catalog_mapping_errors": false,
+    "collision_fixture_errors": false,
+    "corpus_hash_errors": false,
+    "cross_project_acceptable_gold": false,
+    "duplicate_case_ids": false,
+    "fixture_hash_errors": false,
+    "forbidden_current_conflicts": false,
+    "gold_missing_identity_fixture": false,
+    "gold_schema_errors": false,
+    "issue_fixture_gold_errors": false,
+    "lifecycle_distractor_errors": false,
+    "lifecycle_errors": false,
+    "metric_applicability_contract_errors": false,
+    "missing_doc_refs": false,
+    "p0_missing_critical_regression_metric": false,
+    "p0_missing_safety": false,
+    "question_case_set_mismatch": false,
+    "required_nonpublished_evidence": false,
+    "runtime_unscorable_set_mismatch": false,
+    "scenario_reference_errors": false
+  },
+  "checks": {
+    "artifact_hashes": {
+      "corpus_manifest_sha256": "c899de928f2c48d9ef27abb3a0e5cebee8ee1aeca97e03b35e7c062a70aa1512",
+      "dataset_manifest_sha256": "cb138d84f8af2e6e76c906aab9549e90668a2ed48c0f60031843b9efdbf1024d",
+      "fixtures_sha256": "30af875821a8bf4f0bec8f2721276d7f6d05683359dcd3cbd2d958f756d0e41e",
+      "gold_manifest_sha256": "05e6962b927762dc85cb8f5217cf8d8970cab98b2214b92cb27aff3b3bc388b1",
+      "gold_schema_sha256": "4d37d43936a35d1a1f11a45a9df834d6432cc268e678abcefbfbdb74d0b8f0bb",
+      "question_catalog_sha256": "c79eb4c30395308216d271fb3f632f5ba1256ab452c15145943ddf021d1d94e5"
+    },
+    "catalog_and_gold": {
+      "case_ids_exactly_Q001_to_Q050": true,
+      "catalog_mapping_errors": [],
+      "duplicate_case_ids": [],
+      "gold_record_count": 50,
+      "question_count": 50
+    },
+    "corpus_integrity": {
+      "aggregate_corpus_sha256": "e880c250b570f9419528b8958cec21c7a239e7394e0c8cc3d54aad1688cc9521",
+      "cross_project_collisions": {
+        "/api/v1/import": {
+          "found_docs": [
+            "A-API-001",
+            "B-API-001"
+          ],
+          "pass": true,
+          "required_docs": [
+            "A-API-001",
+            "B-API-001"
+          ]
+        },
+        "ERR-IMPORT-004": {
+          "found_docs": [
+            "A-API-001",
+            "B-API-001",
+            "B-TEST-001"
+          ],
+          "pass": true,
+          "required_docs": [
+            "A-API-001",
+            "B-API-001"
+          ]
+        },
+        "REQ-3.2.1": {
+          "found_docs": [
+            "A-DRAFT-001",
+            "A-REQ-001",
+            "A-REQ-001-OLD",
+            "B-REQ-001",
+            "B-REQ-001-OLD"
+          ],
+          "pass": true,
+          "required_docs": [
+            "A-REQ-001",
+            "B-REQ-001"
+          ]
+        },
+        "t_order_detail": {
+          "found_docs": [
+            "A-DB-001",
+            "B-DB-001"
+          ],
+          "pass": true,
+          "required_docs": [
+            "A-DB-001",
+            "B-DB-001"
+          ]
+        }
+      },
+      "document_count": 22,
+      "file_hash_errors": [],
+      "matches_dataset_manifest": true
+    },
+    "fixtures": {
+      "authorization_errors": [],
+      "fault_scenario_count": 2,
+      "fixtures_sha256": "30af875821a8bf4f0bec8f2721276d7f6d05683359dcd3cbd2d958f756d0e41e",
+      "gold_missing_identity": [],
+      "identity_count": 7,
+      "issue_gold_errors": [],
+      "matches_dataset_manifest": true,
+      "membership_row_count": 6,
+      "sandbox_issue_count": 7,
+      "scenario_reference_errors": [],
+      "setup_scenario_count": 4
+    },
+    "gold_references": {
+      "cross_project_acceptable_gold": [],
+      "forbidden_current_conflicts": [],
+      "missing_doc_refs": [],
+      "required_nonpublished_evidence": []
+    },
+    "gold_schema": {
+      "schema_version": "gold-v1",
+      "validation_errors": []
+    },
+    "lifecycle": {
+      "distractors": {
+        "A-DEL-001": {
+          "actual": "DELETE_PENDING",
+          "expected": "DELETE_PENDING",
+          "pass": true
+        },
+        "A-DRAFT-001": {
+          "actual": "DRAFT",
+          "expected": "DRAFT",
+          "pass": true
+        },
+        "A-REQ-001-OLD": {
+          "actual": "SUPERSEDED",
+          "expected": "SUPERSEDED",
+          "pass": true
+        },
+        "B-DRAFT-001": {
+          "actual": "UNDER_REVIEW",
+          "expected": "UNDER_REVIEW",
+          "pass": true
+        },
+        "B-REQ-001-OLD": {
+          "actual": "SUPERSEDED",
+          "expected": "SUPERSEDED",
+          "pass": true
+        }
+      },
+      "errors": []
+    },
+    "metric_applicability": {
+      "Q012_current_version_metric_applicable": false,
+      "Q041_current_version_metric_applicable": false,
+      "contract_errors": [],
+      "current_version_population_case_ids": [
+        "Q009",
+        "Q010",
+        "Q011",
+        "Q025",
+        "Q026",
+        "Q042",
+        "Q047"
+      ],
+      "metric_definition_version": "v1"
+    },
+    "p0": {
+      "case_count": 15,
+      "missing_critical_regression_metric": [],
+      "missing_safety_assertions": []
+    },
+    "runtime_scope": {
+      "actual_unscorable": [
+        "Q014",
+        "Q046",
+        "Q049"
+      ],
+      "exact_match": true,
+      "expected_unscorable": [
+        "Q014",
+        "Q046",
+        "Q049"
+      ]
+    }
+  },
+  "dataset_version": "v0",
+  "overall_status": "PASS_READY_FOR_WS8_IMPLEMENTATION",
+  "phase": "B7",
+  "validation_schema_version": "benchmark-static-validation-v1"
+}

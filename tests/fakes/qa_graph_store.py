@@ -29,6 +29,7 @@ class InMemoryQAGraphStore:
         self.queries: dict[UUID, str] = {}
         self.artifacts: dict[UUID, dict[str, object]] = {}
         self.bundles: dict[UUID, tuple[KnowledgeChunk, ...]] = {}
+        self.bundle_rounds: dict[UUID, int] = {}
         self.answers: dict[UUID, dict[str, object]] = {}
         self.governed_bundles: dict[UUID, FrozenEvidenceBundle] = {}
         self.citations: dict[UUID, tuple[CitationReference, ...]] = {}
@@ -93,8 +94,10 @@ class InMemoryQAGraphStore:
         project_id: UUID,
         query_text: str,
         chunks: list[KnowledgeChunk],
+        retrieval_round: int,
     ) -> UUID:
         bundle_id = uuid4()
+        self.bundle_rounds[bundle_id] = retrieval_round
         self.bundles[bundle_id] = tuple(chunks)
         return bundle_id
 

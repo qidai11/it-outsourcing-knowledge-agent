@@ -20,6 +20,8 @@ dependencies = [
 ]
 
 [project.scripts]
+project-agent-eval = "project_agent.cli.evaluation:main"
+project-agent-eval-prepare = "project_agent.cli.evaluation_prepare:main"
 project-agent-worker = "project_agent.cli.worker:main"
 
 [dependency-groups]

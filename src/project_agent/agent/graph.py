@@ -13,7 +13,7 @@ from project_agent.agent.nodes.identifier_node import resolve_identifiers_node
 from project_agent.agent.nodes.load_prompt import load_prompt_snapshot_node
 from project_agent.agent.nodes.query_analysis_node import analyze_query_node
 from project_agent.agent.nodes.refuse import refuse_node
-from project_agent.agent.nodes.resolve_identifiers import ExactIdentifierResolver
+from project_agent.agent.nodes.resolve_identifiers import IdentifierResolutionPort
 from project_agent.agent.nodes.resolve_scope import resolve_scope_node
 from project_agent.agent.nodes.retrieve import retrieve_node
 from project_agent.agent.nodes.revise_answer import revise_answer_node
@@ -34,7 +34,7 @@ from project_agent.observability.metrics import ObservedStructuredLLM
 class QAGraphDependencies:
     authorization: AuthorizationService
     query_analysis: QueryAnalysisService
-    exact_resolver: ExactIdentifierResolver
+    exact_resolver: IdentifierResolutionPort
     knowledge: KnowledgeRetrievalPort
     access_policy: ProjectAccessPolicy
     prompt_config: PromptConfigService
@@ -44,6 +44,7 @@ class QAGraphDependencies:
     llm_usage: StructuredLLMUsagePort
     store: QAGraphStorePort
     model_alias: str
+    allow_second_round: bool = True
 
 
 def _after_project_selection(state: AgentState) -> str:
@@ -136,6 +137,7 @@ def build_project_qa_graph(
             state,
             exact_resolver=deps.exact_resolver,
             store=deps.store,
+            allow_second_round=deps.allow_second_round,
         )
 
     async def retrieve(state: AgentState) -> AgentState:

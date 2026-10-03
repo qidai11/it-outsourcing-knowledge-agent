@@ -91,6 +91,7 @@ async def _seed_grade_state(
         run_id=run_id,
         project_id=project_id,
         query_text=plan.original_query,
+        retrieval_round=max(1, retrieval_round),
         chunks=[
             KnowledgeChunk(
                 project_id="PRJ-ALPHA",
@@ -214,3 +215,28 @@ async def test_grade_node_refuses_when_second_round_is_not_available() -> None:
     assert result["route"] == "refusal"
     assert result["last_error_code"] == "INSUFFICIENT_EVIDENCE"
     assert result.get("retrieval_plan_id") is None
+
+
+@pytest.mark.asyncio
+async def test_single_round_variant_never_executes_second_retrieval() -> None:
+    store = InMemoryQAGraphStore()
+    state, _ = await _seed_grade_state(store=store, allow_second_round=False)
+    llm = FakeStructuredLLM()
+    llm.queue_response(
+        {
+            "adequate": False,
+            "reason": "INSUFFICIENT_COVERAGE",
+            "second_round_justified": True,
+            "refined_query": "try a second query",
+        }
+    )
+    result = await grade_retrieval_node(
+        state,  # type: ignore[arg-type]
+        llm=llm,
+        llm_usage=llm,
+        store=store,
+        model_alias="fake-grade-model",
+    )
+    assert result["route"] == "refusal"
+    assert result.get("retrieval_plan_id") is None
+    assert result["last_error_code"] == "INSUFFICIENT_EVIDENCE"

@@ -473,6 +473,7 @@ async def test_two_round_refinement_preserves_identical_authorization_scope() ->
     assert second.query != first.query
     assert second.query == "ALPHA exact rollback procedure"
     assert state["retrieval_round"] == 2
+    assert sorted(store.bundle_rounds.values()) == [1, 2]
     assert store.telemetry[run_id].retrieval_rounds == 2
     llm.queue_response(
         {
@@ -591,4 +592,5 @@ async def test_second_round_inadequate_grade_refuses_without_third_retrieval() -
     assert state["last_error_code"] == "INSUFFICIENT_EVIDENCE"
     assert len(knowledge.retrieval_requests) == 2
     assert state["retrieval_round"] == 2
+    assert sorted(store.bundle_rounds.values()) == [1, 2]
     assert store.telemetry[run_id].retrieval_rounds == 2

@@ -18,6 +18,7 @@ from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EVIDENCE_ROOT = REPO_ROOT / "artifacts" / "ws7-live"
+ALLOWED_BRANCHES = ("feat/ws7", "feat/ws8")
 REQUIRED_GATE_NAMES = (
     "postgres_runtime",
     "ragflow",
@@ -207,8 +208,9 @@ def _required_preflight(env: Mapping[str, str]) -> dict[str, object]:
         raise PreflightError("missing required environment: " + ", ".join(missing))
 
     branch = _checked(("git", "branch", "--show-current"), env, label="git branch")
-    if branch != "feat/ws7":
-        raise PreflightError(f"required branch is feat/ws7, got {branch or '<detached>'}")
+    if branch not in ALLOWED_BRANCHES:
+        expected = " or ".join(ALLOWED_BRANCHES)
+        raise PreflightError(f"required branch is {expected}, got {branch or '<detached>'}")
     head = _checked(("git", "rev-parse", "HEAD"), env, label="git HEAD")
     git_status = _checked(("git", "status", "--short"), env, label="git status")
 

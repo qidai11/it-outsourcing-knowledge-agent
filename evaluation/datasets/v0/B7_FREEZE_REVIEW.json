@@ -1,0 +1,61 @@
+{
+  "benchmark_side_blocker_count": 0,
+  "blocking_checks": {
+    "authorization_fixture_errors": false,
+    "catalog_mapping_errors": false,
+    "collision_fixture_errors": false,
+    "corpus_hash_errors": false,
+    "cross_project_acceptable_gold": false,
+    "duplicate_case_ids": false,
+    "fixture_hash_errors": false,
+    "forbidden_current_conflicts": false,
+    "gold_missing_identity_fixture": false,
+    "gold_schema_errors": false,
+    "issue_fixture_gold_errors": false,
+    "lifecycle_distractor_errors": false,
+    "lifecycle_errors": false,
+    "metric_applicability_contract_errors": false,
+    "missing_doc_refs": false,
+    "p0_missing_critical_regression_metric": false,
+    "p0_missing_safety": false,
+    "question_case_set_mismatch": false,
+    "required_nonpublished_evidence": false,
+    "runtime_unscorable_set_mismatch": false,
+    "scenario_reference_errors": false
+  },
+  "corpus_change_required": false,
+  "dataset_version": "v0",
+  "decision": "PASS_READY_FOR_WS8_IMPLEMENTATION",
+  "decisions": {
+    "Q012": {
+      "current_doc_codes": [],
+      "decision": "REMOVE_current_version_hit_rate_FROM_metric_applicability",
+      "rationale": "Current-Version Hit Rate v1 is defined only for cases with explicit current_doc_codes. Q012 is a DELETE_PENDING exclusion-only behavior case and has no frozen current replacement.",
+      "remaining_metric_applicability": []
+    },
+    "Q041": {
+      "current_doc_codes": [],
+      "decision": "REMOVE_current_version_hit_rate_FROM_metric_applicability",
+      "rationale": "Current-Version Hit Rate v1 is defined only for cases with explicit current_doc_codes. Q041 remains a P0 Critical Regression case for DELETE_PENDING exclusion.",
+      "remaining_metric_applicability": [
+        "critical_regression"
+      ]
+    }
+  },
+  "fixture_change_required": false,
+  "gold_hash": {
+    "after_b7": "05e6962b927762dc85cb8f5217cf8d8970cab98b2214b92cb27aff3b3bc388b1",
+    "before_b7": "d736fde4552cd3918e280963ef8e96ef8dbe8843ce7d56a6cae541b7f429b470"
+  },
+  "gold_schema_version_change_required": false,
+  "known_runtime_findings_not_benchmark_blockers": [
+    "Q014 fuzzy identifier suggestion/confirmation not composed into current QA Run protocol",
+    "Q046 no first-class company-public Run scope",
+    "Q049 no deterministic exact issue-key lookup path"
+  ],
+  "metric_definition_version_change_required": false,
+  "phase": "B7",
+  "question_catalog_change_required": false,
+  "review_schema_version": "benchmark-freeze-review-v1",
+  "reviewed_metric_definition_version": "v1"
+}

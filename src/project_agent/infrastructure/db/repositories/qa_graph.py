@@ -171,14 +171,29 @@ class SqlAlchemyQAGraphStore:
         project_id: UUID,
         query_text: str,
         chunks: list[KnowledgeChunk],
+        retrieval_round: int,
     ) -> UUID:
+        if retrieval_round < 1:
+            raise ValueError("retrieval_round must be positive")
         bundle = EvidenceBundleModel(run_id=run_id, query_text=query_text)
         self._session.add(bundle)
         await self._session.flush()
+        if not chunks:
+            # An empty final round must be observable without a schema migration.
+            # No source/document is fabricated and the existing read port ignores it.
+            self._session.add(
+                EvidenceSnapshotModel(
+                    bundle_id=bundle.id, project_id=project_id, document_version_id=None,
+                    source_type="retrieval_round_marker",
+                    source_ref="evaluation:empty-retrieval-round", content="", rank=0,
+                    metadata_json={"retrieval_round": retrieval_round},
+                )
+            )
         for rank, chunk in enumerate(chunks, start=1):
             metadata: dict[str, object] = dict(chunk.metadata)
             metadata.update(
                 {
+                    "retrieval_round": retrieval_round,
                     "project_code": chunk.project_id,
                     "knowledge_space_id": chunk.knowledge_space_id,
                     "page_no": chunk.page_no,
@@ -204,13 +219,17 @@ class SqlAlchemyQAGraphStore:
     async def load_evidence_bundle(self, bundle_id: UUID) -> tuple[KnowledgeChunk, ...]:
         stmt = (
             select(EvidenceSnapshotModel)
-            .where(EvidenceSnapshotModel.bundle_id == bundle_id)
+            .where(
+                EvidenceSnapshotModel.bundle_id == bundle_id,
+                EvidenceSnapshotModel.source_type == "retrieval_candidate",
+            )
             .order_by(EvidenceSnapshotModel.rank)
         )
         rows = (await self._session.scalars(stmt)).all()
         result: list[KnowledgeChunk] = []
         for row in rows:
             metadata = dict(row.metadata_json)
+            metadata.pop("retrieval_round", None)
             project_code = metadata.pop("project_code", None)
             knowledge_space_id = metadata.pop("knowledge_space_id", None)
             page_no = metadata.pop("page_no", None)
